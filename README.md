@@ -66,3 +66,7 @@ internal/plugin     uuplugin process state and stop helpers
 internal/router     supported router names and defaults
 scripts             original shell installer reference
 ```
+
+## License
+
+MIT
