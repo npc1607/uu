@@ -5,13 +5,13 @@ Go rewrite of `uu.sh`.
 ## Build
 
 ```sh
-go build -buildvcs=false -o uu ./cmd/uu
+make build
 ```
 
 ## Run
 
 ```sh
-sudo ./uu install
+sudo ./bin/uu install
 ```
 
 The default behavior matches the original script defaults:
@@ -26,22 +26,22 @@ For `steam-deck-plugin`, the default install directory is the directory containi
 Optional flags:
 
 ```sh
-sudo ./uu --router steam-deck-plugin --model x86_64
-sudo ./uu --config configs/uu.yaml.example
-sudo ./uu --follow-logs
+sudo ./bin/uu --router steam-deck-plugin --model x86_64
+sudo ./bin/uu --config configs/uu.yaml.example
+sudo ./bin/uu --follow-logs
 ```
 
 Commands:
 
 ```sh
-sudo ./uu install   # install or reinstall
-sudo ./uu start     # start the installed service/monitor only
-sudo ./uu stop      # stop the service/process
-sudo ./uu status    # print service/process status
-sudo ./uu logs      # follow the configured log file
+sudo ./bin/uu install   # install or reinstall
+sudo ./bin/uu start     # start the installed service/monitor only
+sudo ./bin/uu stop      # stop the service/process
+sudo ./bin/uu status    # print service/process status
+sudo ./bin/uu logs      # follow the configured log file
 ```
 
-Running `./uu` without a command is kept as a compatibility shortcut for `./uu install`.
+Running `./bin/uu` without a command is kept as a compatibility shortcut for `./bin/uu install`.
 
 The YAML config intentionally uses a flat schema, including `router`, `model`, `install_dir`, `log_dir`, and the `follow_log_*` options below.
 
@@ -64,4 +64,5 @@ internal/downloader remote script download and MD5 verification
 internal/logtail    terminal log following
 internal/plugin     uuplugin process state and stop helpers
 internal/router     supported router names and defaults
+scripts             original shell installer reference
 ```

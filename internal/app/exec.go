@@ -18,8 +18,8 @@ func (i *App) runCommand(name string, args ...string) error {
 func (i *App) runSilent(name string, args ...string) error {
 	i.logf("run silent: %s %s", name, strings.Join(args, " "))
 	cmd := exec.Command(name, args...)
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
+	cmd.Stdout = i.logWriter
+	cmd.Stderr = i.logWriter
 	return cmd.Run()
 }
 

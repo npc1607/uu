@@ -34,6 +34,7 @@ func (i *App) openLog(cleanOld bool) {
 		return
 	}
 	i.logFile = file
+	i.logPath = logPath
 	i.logWriter = file
 	i.logger = log.New(file, "", log.LstdFlags)
 }

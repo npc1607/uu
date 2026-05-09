@@ -109,6 +109,9 @@ func (i *App) configServicesStart() error {
 
 func (i *App) configSteamDeckSystemd() error {
 	service := "/etc/systemd/system/uuplugin.service"
+	if os.Geteuid() != 0 {
+		return fmt.Errorf("root privileges required to write %s; rerun with sudo", service)
+	}
 	content := fmt.Sprintf(`[Unit]
 Description=UU Plugin
 Wants=network-online.target

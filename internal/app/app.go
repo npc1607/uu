@@ -24,6 +24,7 @@ type App struct {
 	stdout      io.Writer
 	stderr      io.Writer
 	logFile     *os.File
+	logPath     string
 	logger      *log.Logger
 	logWriter   io.Writer
 	initialized bool
@@ -81,12 +82,15 @@ func New(opts config.Options, options ...Option) *App {
 func (i *App) Install() (status int) {
 	i.openLog(true)
 	defer i.closeLog()
+	if i.logPath != "" {
+		fmt.Fprintf(i.stdout, "Install log: %s\n", i.logPath)
+	}
 	defer func() {
 		if !i.initialized {
 			return
 		}
 		if status > 4 && fileExists(i.params.uninstallFile) {
-			fmt.Fprintln(i.stdout, "Cleaning up.")
+			fmt.Fprintf(i.stdout, "Cleaning up partial install; details: %s\n", i.logPath)
 			if err := i.cleanUp(); err != nil {
 				i.logf("final cleanup failed: %v", err)
 			}
@@ -99,78 +103,76 @@ func (i *App) Install() (status int) {
 	}()
 
 	if err := i.initParams(); err != nil {
-		i.logf("init params failed: %v", err)
-		return 9
+		return i.failInstall(9, "init params failed: %v", err)
 	}
 
 	if err := i.configRouter(); err != nil {
-		i.logf("config router failed: %v", err)
-		return 1
+		return i.failInstall(1, "config router failed: %v", err)
 	}
 
 	if err := os.MkdirAll(i.params.installDir, 0o755); err != nil {
-		i.logf("create install dir failed: %v", err)
-		return 2
+		return i.failInstall(2, "create install dir %s failed: %v", i.params.installDir, err)
 	}
 
 	if err := i.downloader.Download(i.params.uninstallDownloadURL, i.params.uninstallFile); err != nil {
-		i.logf("download uninstall failed: %v", err)
-		return 3
+		return i.failInstall(3, "download uninstall script failed: %v", err)
 	}
 
 	if err := i.cleanUp(); err != nil {
-		i.logf("cleanup failed: %v", err)
-		return 4
+		return i.failInstall(4, "cleanup old install failed: %v", err)
 	}
 
 	if err := i.downloader.Download(i.params.monitorDownloadURL, i.params.monitorFile); err != nil {
 		_ = os.Remove(i.params.monitorFile)
-		i.logf("download monitor failed: %v", err)
-		return 5
+		return i.failInstall(5, "download monitor script failed: %v", err)
 	}
 	if err := chmodAdd(i.params.monitorFile, 0o111); err != nil {
-		i.logf("chmod monitor failed: %v", err)
-		return 5
+		return i.failInstall(5, "chmod monitor script failed: %v", err)
 	}
 
 	if i.params.router == router.SteamDeck {
 		if err := i.writeMonitorConfig(router.DefaultModel); err != nil {
-			fmt.Fprintln(i.stdout, "Installation failed!")
-			i.logf("write monitor config failed: %v", err)
-			return 6
+			return i.failInstall(6, "write monitor config failed: %v", err)
 		}
-		bootErr := i.configBootup()
-		runningErr := plugin.WaitRunning(90, time.Second)
-		uninstallErr := i.createUninstall()
-		if bootErr != nil || runningErr != nil || uninstallErr != nil {
-			fmt.Fprintln(i.stdout, "Installation failed!")
-			i.logf("steam deck boot=%v running=%v create_uninstall=%v", bootErr, runningErr, uninstallErr)
-			return 6
+		if err := i.configBootup(); err != nil {
+			return i.failInstall(6, "configure boot service failed: %v", err)
+		}
+		if err := plugin.WaitRunning(90, time.Second); err != nil {
+			return i.failInstall(6, "uuplugin did not start: %v", err)
+		}
+		if err := i.createUninstall(); err != nil {
+			return i.failInstall(6, "create uninstall script failed: %v", err)
 		}
 		fmt.Fprintln(i.stdout, "Installation succeeded!")
 		return i.finishSuccessfulInstall()
 	}
 
 	if err := i.startMonitor(); err != nil {
-		i.logf("start monitor failed: %v", err)
-		return 6
+		return i.failInstall(6, "start monitor failed: %v", err)
 	}
 
 	if err := plugin.WaitRunning(90, time.Second); err != nil {
-		i.logf("check running failed: %v", err)
-		return 7
+		return i.failInstall(7, "uuplugin did not start: %v", err)
 	}
 
 	if err := i.configBootup(); err != nil {
-		i.logf("config bootup failed: %v", err)
-		return 8
+		return i.failInstall(8, "configure boot service failed: %v", err)
 	}
 
 	if err := i.printSN(); err != nil {
-		i.logf("print sn failed: %v", err)
-		return 10
+		return i.failInstall(10, "print sn failed: %v", err)
 	}
 	return i.finishSuccessfulInstall()
+}
+
+func (i *App) failInstall(code int, format string, args ...any) int {
+	msg := fmt.Sprintf(format, args...)
+	fmt.Fprintf(i.stderr, "Installation failed: %s\n", msg)
+	if i.logPath != "" {
+		fmt.Fprintf(i.stderr, "Install log: %s\n", i.logPath)
+	}
+	i.logf("installation failed: %s", msg)
+	return code
 }
 
 func (i *App) finishSuccessfulInstall() int {
@@ -192,16 +194,6 @@ func (i *App) finishSuccessfulInstall() int {
 		i.logf("follow log failed: %v", err)
 	}
 	return 0
-}
-
-func (i *App) cleanUp() error {
-	if !fileExists(i.params.uninstallFile) {
-		return fmt.Errorf("%s does not exist", i.params.uninstallFile)
-	}
-	if err := chmodAdd(i.params.uninstallFile, 0o100); err != nil {
-		return err
-	}
-	return i.runSilent("/bin/sh", i.params.uninstallFile, i.params.router, i.params.model)
 }
 
 func (i *App) writeMonitorConfig(model string) error {
