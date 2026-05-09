@@ -1,0 +1,8 @@
+/uu
+/.cache/
+/.git-real/
+/dist/
+/coverage.out
+/uninstall.sh
+/uuplugin_monitor.config
+/uuplugin_monitor.sh

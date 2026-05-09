@@ -1,0 +1,12 @@
+router: steam-deck-plugin
+model: x86_64
+# Defaults to the directory containing the uu binary.
+# install_dir: /opt/uu/
+# log_dir: /tmp
+
+# Print and follow the monitor log after successful install.
+follow_logs: false
+follow_log_file: /tmp/monitor.log
+follow_log_lines: 100
+# Use 0 for no timeout, or values like 30s, 5m.
+follow_log_timeout: 0
