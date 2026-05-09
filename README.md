@@ -8,6 +8,8 @@ Go rewrite of `uu.sh`.
 make build
 ```
 
+Release assets are built by GitHub Actions when a `v*` tag is pushed. The workflow uploads a `linux/amd64` tarball and checksum file to the GitHub Release.
+
 ## Run
 
 ```sh

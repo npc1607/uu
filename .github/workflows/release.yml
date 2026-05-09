@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, for example v0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build release assets
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build linux amd64 package
+        env:
+          TAG_NAME: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -eu
+          package="uu_${TAG_NAME}_linux_amd64"
+          mkdir -p "dist/${package}"
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+            -trimpath \
+            -buildvcs=false \
+            -ldflags="-s -w" \
+            -o "dist/${package}/uu" \
+            ./cmd/uu
+          cp README.md LICENSE "dist/${package}/"
+          cp configs/uu.yaml.example "dist/${package}/uu.yaml.example"
+          tar -C dist -czf "dist/${package}.tar.gz" "${package}"
+          (cd dist && sha256sum "${package}.tar.gz" > checksums.txt)
+
+      - name: Create release if missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if ! gh release view "${TAG_NAME}" >/dev/null 2>&1; then
+            gh release create "${TAG_NAME}" \
+              --title "uu ${TAG_NAME}" \
+              --notes "Automated release for ${TAG_NAME}."
+          fi
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ inputs.tag || github.ref_name }}
+        run: |
+          gh release upload "${TAG_NAME}" dist/*.tar.gz dist/checksums.txt --clobber
