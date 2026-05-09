@@ -83,22 +83,38 @@ func (i *App) Status() int {
 		return 1
 	}
 
+	fmt.Fprintf(i.stdout, "router=%s\n", i.params.router)
+	fmt.Fprintf(i.stdout, "install_dir=%s\n", i.params.installDir)
+	fmt.Fprintf(i.stdout, "monitor_file=%s exists=%t\n", i.params.monitorFile, fileExists(i.params.monitorFile))
+	fmt.Fprintf(i.stdout, "monitor_config=%s exists=%t\n", i.params.monitorConfig, fileExists(i.params.monitorConfig))
+
 	if i.params.router == router.SteamDeck {
-		if state, err := systemdState("uuplugin"); err == nil && state != "" {
+		if state, err := systemdState("uuplugin"); err == nil {
 			fmt.Fprintf(i.stdout, "service=uuplugin state=%s\n", state)
+		} else {
+			fmt.Fprintf(i.stdout, "service=uuplugin state=unknown error=%v\n", err)
 		}
+	}
+
+	if pids, err := plugin.PIDsByPattern(plugin.MonitorFilename); err == nil && len(pids) > 0 {
+		fmt.Fprintf(i.stdout, "monitor=running pids=%s\n", joinPIDs(pids))
+	} else {
+		fmt.Fprintln(i.stdout, "monitor=not-running")
 	}
 
 	pid, running := plugin.Status()
 	if running {
-		fmt.Fprintf(i.stdout, "%s running (pid %d)\n", plugin.Executable, pid)
+		fmt.Fprintf(i.stdout, "process=%s state=running pid=%d\n", plugin.Executable, pid)
+		fmt.Fprintf(i.stdout, "log_file=%s\n", i.opts.FollowLogFile)
 		return 0
 	}
 	if pid > 0 {
-		fmt.Fprintf(i.stdout, "%s not running (stale pid %d)\n", plugin.Executable, pid)
+		fmt.Fprintf(i.stdout, "process=%s state=not-running stale_pid=%d\n", plugin.Executable, pid)
+		fmt.Fprintf(i.stdout, "log_file=%s\n", i.opts.FollowLogFile)
 		return 1
 	}
-	fmt.Fprintf(i.stdout, "%s not running\n", plugin.Executable)
+	fmt.Fprintf(i.stdout, "process=%s state=not-running\n", plugin.Executable)
+	fmt.Fprintf(i.stdout, "log_file=%s\n", i.opts.FollowLogFile)
 	return 1
 }
 
@@ -118,10 +134,30 @@ func (i *App) Logs() int {
 }
 
 func systemdState(service string) (string, error) {
-	out, err := exec.Command("systemctl", "is-active", service).Output()
+	out, err := exec.Command("systemctl", "is-active", service).CombinedOutput()
 	state := strings.TrimSpace(string(out))
-	if err != nil && state == "" {
-		return "", err
+	if state == "" {
+		state = "unknown"
 	}
-	return state, nil
+	if isSystemdState(state) {
+		return state, nil
+	}
+	return state, err
+}
+
+func isSystemdState(state string) bool {
+	switch state {
+	case "active", "inactive", "failed", "activating", "deactivating", "reloading", "maintenance", "unknown":
+		return true
+	default:
+		return false
+	}
+}
+
+func joinPIDs(pids []int) string {
+	parts := make([]string, 0, len(pids))
+	for _, pid := range pids {
+		parts = append(parts, fmt.Sprint(pid))
+	}
+	return strings.Join(parts, ",")
 }

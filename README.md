@@ -45,6 +45,8 @@ sudo ./bin/uu logs      # follow the configured log file
 
 Running `./bin/uu` without a command is kept as a compatibility shortcut for `./bin/uu install`.
 
+`status` prints the resolved install directory, monitor file/config presence, systemd state on Steam Deck, monitor process state, `uuplugin` process state, and the configured log file path.
+
 The YAML config intentionally uses a flat schema, including `router`, `model`, `install_dir`, `log_dir`, and the `follow_log_*` options below.
 
 To keep the terminal attached and print monitor logs after install:
