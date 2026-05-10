@@ -131,6 +131,9 @@ func (i *App) Install() (status int) {
 	}
 
 	if i.params.router == router.SteamDeck {
+		if err := i.patchSteamDeckMonitorIdentity(); err != nil {
+			return i.failInstall(6, "patch monitor identity persistence failed: %v", err)
+		}
 		if err := i.writeMonitorConfig(router.DefaultModel); err != nil {
 			return i.failInstall(6, "write monitor config failed: %v", err)
 		}

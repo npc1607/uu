@@ -71,6 +71,9 @@ func (i *App) cleanUpSteamDeck() error {
 	uninstallFile := filepath.Join(i.params.installDir, plugin.UninstallFilename)
 	i.logf("cleanup targets: monitor=%s config=%s uninstall=%s runtime=/tmp/uu service=%s", i.params.monitorFile, i.params.monitorConfig, uninstallFile, serviceFile)
 
+	if err := i.persistSteamDeckRuntimeIdentity(); err != nil {
+		i.logf("persist identity before cleanup failed: %v", err)
+	}
 	if err := plugin.StopProcessesByPattern(plugin.MonitorFilename); err != nil {
 		i.logf("stop monitor during cleanup failed: %v", err)
 	}

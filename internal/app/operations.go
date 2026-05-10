@@ -26,6 +26,10 @@ func (i *App) Start() int {
 
 	var err error
 	if i.params.router == router.SteamDeck {
+		if err = i.patchSteamDeckMonitorIdentity(); err != nil {
+			fmt.Fprintf(i.stderr, "start failed: %v\n", err)
+			return 1
+		}
 		err = i.runCommand("systemctl", "start", "uuplugin")
 	} else {
 		err = i.startMonitor()
