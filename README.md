@@ -2,6 +2,15 @@
 
 Go rewrite of `uu.sh`.
 
+## Why This Version
+
+Compared with the original `uu.sh` installer, this Go version keeps the same default Steam Deck install behavior while adding a few practical improvements:
+
+- Persistent Steam Deck identity: `.uuplugin_uuid` and `.uid` are saved in the install directory and restored to `/tmp/uu`, so reinstalling, upgrading, or cleaning up the runtime directory does not create a new plugin identity.
+- Reusable CLI commands: install, start, stop, status, and logs are available without rerunning the full shell installer flow.
+- Clearer diagnostics: install logs, resolved paths, systemd state, monitor state, and `uuplugin` process state are easier to inspect.
+- Configurable install options: router, model, install directory, log directory, and log-following behavior can be set with flags or YAML.
+
 ## Build
 
 ```sh
