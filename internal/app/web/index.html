@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="uu-control-token" content="__UU_CONTROL_TOKEN__">
+  <title>UU Namespace Control</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>UU Namespace Control</h1>
+    <button type="button" data-action="refresh">Refresh</button>
+  </header>
+
+  <main>
+    <section class="panel">
+      <div class="summary">
+        <div>
+          <div class="label">Namespace</div>
+          <div class="state" id="namespace-name">uu-ns</div>
+        </div>
+        <div class="badge" id="status-badge">Loading</div>
+      </div>
+
+      <dl class="details">
+        <dt>Parent interface</dt><dd id="parent">-</dd>
+        <dt>Phone target IP</dt><dd id="address">-</dd>
+        <dt>Gateway</dt><dd id="gateway">-</dd>
+        <dt>DNS</dt><dd id="dns">-</dd>
+        <dt>Link mode</dt><dd id="mode">-</dd>
+        <dt>UU plugin PID</dt><dd id="plugin-pids">-</dd>
+        <dt>Monitor PID</dt><dd id="monitor-pids">-</dd>
+        <dt>Install directory</dt><dd id="install-dir">-</dd>
+        <dt>Runtime directory</dt><dd id="runtime-dir">-</dd>
+        <dt>Plugin log file</dt><dd id="plugin-log-file">-</dd>
+        <dt>Log file</dt><dd id="log-file">-</dd>
+      </dl>
+
+      <div class="section-heading">
+        <h2>Log-observed LAN clients</h2>
+        <span class="observed-at" id="observed-at">-</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Address</th>
+              <th>MAC</th>
+              <th>Last seen</th>
+              <th>Source</th>
+              <th>Evidence</th>
+              <th>Events</th>
+            </tr>
+          </thead>
+          <tbody id="clients-body"></tbody>
+        </table>
+      </div>
+
+      <div class="section-heading">
+        <h2>Namespace sockets</h2>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Protocol</th>
+              <th>State</th>
+              <th>Local endpoint</th>
+              <th>Peer endpoint</th>
+              <th>LAN peer</th>
+              <th>Process</th>
+            </tr>
+          </thead>
+          <tbody id="sockets-body"></tbody>
+        </table>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="primary" data-action="start">Start</button>
+        <button type="button" class="danger" data-action="stop">Stop</button>
+        <button type="button" data-action="restart">Restart</button>
+      </div>
+      <pre class="error" id="error" hidden></pre>
+    </section>
+  </main>
+</body>
+</html>

@@ -45,7 +45,10 @@ set -u
 INSTALL_DIR="$(cd "$(dirname "$0")"; pwd -P)"
 systemctl disable uuplugin >/dev/null 2>&1 || true
 systemctl stop uuplugin >/dev/null 2>&1 || true
+systemctl disable uuplugin-ns >/dev/null 2>&1 || true
+systemctl stop uuplugin-ns >/dev/null 2>&1 || true
 rm -f /etc/systemd/system/uuplugin.service
+rm -f /etc/systemd/system/uuplugin-ns.service
 systemctl daemon-reload >/dev/null 2>&1 || true
 rm -rf /tmp/uu
 rm -f "${INSTALL_DIR}/%s" "${INSTALL_DIR}/%s" "${INSTALL_DIR}/%s"
@@ -83,6 +86,8 @@ func (i *App) cleanUpSteamDeck() error {
 	if _, err := exec.LookPath("systemctl"); err == nil {
 		_ = i.runSilent("systemctl", "disable", "uuplugin")
 		_ = i.runSilent("systemctl", "stop", "uuplugin")
+		_ = i.runSilent("systemctl", "disable", namespaceServiceName)
+		_ = i.runSilent("systemctl", "stop", namespaceServiceName)
 	}
 
 	for _, path := range []string{i.params.monitorFile, i.params.monitorConfig, uninstallFile} {
@@ -97,6 +102,9 @@ func (i *App) cleanUpSteamDeck() error {
 	}
 	if err := os.Remove(serviceFile); err != nil && !os.IsNotExist(err) {
 		i.logf("remove %s failed: %v", serviceFile, err)
+	}
+	if err := os.Remove(namespaceServiceFile); err != nil && !os.IsNotExist(err) {
+		i.logf("remove %s failed: %v", namespaceServiceFile, err)
 	}
 	return nil
 }

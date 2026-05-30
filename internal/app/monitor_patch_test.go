@@ -71,6 +71,55 @@ done
 	}
 }
 
+func TestPatchMonitorPluginLogging(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "uuplugin_monitor.sh")
+	script := `#!/bin/sh
+RUNNING_DIR="/tmp/uu"
+PLUGIN_EXE="uuplugin"
+PLUGIN_CONF="uu.conf"
+
+start_acc() {
+    local exefile="${RUNNING_DIR}/${PLUGIN_EXE}"
+    local confile="${RUNNING_DIR}/${PLUGIN_CONF}"
+    ${exefile} "${confile}" >/dev/null 2>&1 &
+    ${exefile} "${RUNNING_DIR}/$PLUGIN_CONF" >/dev/null 2>&1 &
+}
+`
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := patchMonitorPluginLogging(path); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patched := string(content)
+	for _, want := range []string{
+		steamDeckPluginLogPatchMarker,
+		`>>"${RUNNING_DIR}/uuplugin.log" 2>&1 &`,
+		`touch "${RUNNING_DIR}/uuplugin.log"`,
+	} {
+		if !strings.Contains(patched, want) {
+			t.Fatalf("patched script does not contain %q:\n%s", want, patched)
+		}
+	}
+
+	if err := patchMonitorPluginLogging(path); err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(second) != patched {
+		t.Fatal("plugin log patch is not idempotent")
+	}
+}
+
 func TestCopyIdentityFiles(t *testing.T) {
 	srcDir := t.TempDir()
 	dstDir := t.TempDir()

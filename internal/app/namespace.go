@@ -1,11 +1,15 @@
 package app
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,6 +22,9 @@ import (
 
 const namespaceActionTimeout = 90 * time.Second
 
+var namespaceLogIPPattern = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
+var namespaceLogMACPattern = regexp.MustCompile(`(?i)\b[0-9a-f]{2}(?::[0-9a-f]{2}){5}\b`)
+
 type namespaceConfig struct {
 	Name    string
 	Parent  string
@@ -29,21 +36,56 @@ type namespaceConfig struct {
 }
 
 type namespaceState struct {
-	Name          string   `json:"name"`
-	Exists        bool     `json:"exists"`
-	Parent        string   `json:"parent,omitempty"`
-	Link          string   `json:"link,omitempty"`
-	Address       string   `json:"address,omitempty"`
-	Gateway       string   `json:"gateway,omitempty"`
-	DNS           []string `json:"dns,omitempty"`
-	Mode          string   `json:"mode,omitempty"`
-	MonitorPIDs   []int    `json:"monitor_pids,omitempty"`
-	PluginPIDs    []int    `json:"plugin_pids,omitempty"`
-	NamespacePIDs []int    `json:"namespace_pids,omitempty"`
-	MonitorFile   string   `json:"monitor_file,omitempty"`
-	MonitorConfig string   `json:"monitor_config,omitempty"`
-	LogFile       string   `json:"log_file,omitempty"`
-	Error         string   `json:"error,omitempty"`
+	Name             string            `json:"name"`
+	Exists           bool              `json:"exists"`
+	Parent           string            `json:"parent,omitempty"`
+	Link             string            `json:"link,omitempty"`
+	Address          string            `json:"address,omitempty"`
+	Gateway          string            `json:"gateway,omitempty"`
+	DNS              []string          `json:"dns,omitempty"`
+	Mode             string            `json:"mode,omitempty"`
+	MonitorPIDs      []int             `json:"monitor_pids,omitempty"`
+	PluginPIDs       []int             `json:"plugin_pids,omitempty"`
+	NamespacePIDs    []int             `json:"namespace_pids,omitempty"`
+	Clients          []namespaceClient `json:"clients,omitempty"`
+	Sockets          []namespaceSocket `json:"sockets,omitempty"`
+	ObservedAt       string            `json:"observed_at,omitempty"`
+	ObservationError string            `json:"observation_error,omitempty"`
+	InstallDir       string            `json:"install_dir,omitempty"`
+	RuntimeDir       string            `json:"runtime_dir,omitempty"`
+	PluginLogFile    string            `json:"plugin_log_file,omitempty"`
+	MonitorFile      string            `json:"monitor_file,omitempty"`
+	MonitorConfig    string            `json:"monitor_config,omitempty"`
+	LogFile          string            `json:"log_file,omitempty"`
+	Error            string            `json:"error,omitempty"`
+}
+
+type namespaceClient struct {
+	Address       string   `json:"address"`
+	MAC           string   `json:"mac,omitempty"`
+	NeighborState string   `json:"neighbor_state,omitempty"`
+	Protocols     []string `json:"protocols,omitempty"`
+	Connections   int      `json:"connections"`
+	Source        string   `json:"source,omitempty"`
+	LastSeen      string   `json:"last_seen,omitempty"`
+	Evidence      string   `json:"evidence,omitempty"`
+}
+
+type namespaceSocket struct {
+	Protocol     string `json:"protocol"`
+	State        string `json:"state"`
+	LocalAddress string `json:"local_address"`
+	LocalPort    string `json:"local_port"`
+	PeerAddress  string `json:"peer_address"`
+	PeerPort     string `json:"peer_port"`
+	Process      string `json:"process,omitempty"`
+	LANPeer      bool   `json:"lan_peer,omitempty"`
+}
+
+type namespaceNeighbor struct {
+	Address string
+	MAC     string
+	State   string
 }
 
 func (i *App) NamespaceStart() int {
@@ -219,6 +261,9 @@ func (i *App) namespaceStateLocked() (namespaceState, error) {
 		Gateway:       cfg.Gateway,
 		DNS:           append([]string(nil), cfg.DNS...),
 		Mode:          cfg.Mode,
+		InstallDir:    i.params.installDir,
+		RuntimeDir:    steamDeckRuntimeDir,
+		PluginLogFile: steamDeckPluginLogFile,
 		MonitorFile:   i.params.monitorFile,
 		MonitorConfig: i.params.monitorConfig,
 		LogFile:       i.opts.FollowLogFile,
@@ -230,6 +275,11 @@ func (i *App) namespaceStateLocked() (namespaceState, error) {
 		state.NamespacePIDs = append([]int(nil), pids...)
 		state.MonitorPIDs = filterPIDs(pids, plugin.MonitorFilename)
 		state.PluginPIDs = namespacePluginPIDs(pids)
+	}
+	state.Clients, state.Sockets, err = i.namespaceNetworkState(cfg)
+	state.ObservedAt = time.Now().Format(time.RFC3339)
+	if err != nil {
+		state.ObservationError = err.Error()
 	}
 	return state, nil
 }
@@ -245,6 +295,17 @@ func (i *App) printNamespaceState(state namespaceState) {
 	fmt.Fprintf(i.stdout, "namespace_pids=%s\n", joinPIDs(state.NamespacePIDs))
 	fmt.Fprintf(i.stdout, "monitor_pids=%s\n", joinPIDs(state.MonitorPIDs))
 	fmt.Fprintf(i.stdout, "plugin_pids=%s\n", joinPIDs(state.PluginPIDs))
+	fmt.Fprintf(i.stdout, "clients=%d\n", len(state.Clients))
+	for _, client := range state.Clients {
+		fmt.Fprintf(i.stdout, "client=%s mac=%s neighbor_state=%s protocols=%s connections=%d\n",
+			client.Address, client.MAC, client.NeighborState, strings.Join(client.Protocols, ","), client.Connections)
+	}
+	if state.ObservationError != "" {
+		fmt.Fprintf(i.stdout, "observation_error=%s\n", state.ObservationError)
+	}
+	fmt.Fprintf(i.stdout, "install_dir=%s\n", state.InstallDir)
+	fmt.Fprintf(i.stdout, "runtime_dir=%s\n", state.RuntimeDir)
+	fmt.Fprintf(i.stdout, "plugin_log_file=%s exists=%t\n", state.PluginLogFile, fileExists(state.PluginLogFile))
 	fmt.Fprintf(i.stdout, "monitor_file=%s exists=%t\n", state.MonitorFile, fileExists(state.MonitorFile))
 	fmt.Fprintf(i.stdout, "monitor_config=%s exists=%t\n", state.MonitorConfig, fileExists(state.MonitorConfig))
 	fmt.Fprintf(i.stdout, "log_file=%s\n", state.LogFile)
@@ -410,6 +471,367 @@ func (i *App) namespacePIDs(name string) ([]int, error) {
 	}
 	sort.Ints(pids)
 	return uniqueInts(pids), nil
+}
+
+func (i *App) namespaceNetworkState(cfg namespaceConfig) ([]namespaceClient, []namespaceSocket, error) {
+	sockets, socketErr := i.namespaceSockets(cfg)
+	neighbors, neighborErr := i.namespaceNeighbors(cfg)
+	clients, logErr := i.namespaceClientsFromLogs(cfg, neighbors)
+	return clients, sockets, errors.Join(socketErr, neighborErr, logErr)
+}
+
+func (i *App) namespaceSockets(cfg namespaceConfig) ([]namespaceSocket, error) {
+	out, err := i.commandOutput("ip", "netns", "exec", cfg.Name, "ss", "-H", "-tunap")
+	if err != nil {
+		return nil, fmt.Errorf("inspect namespace sockets: %w", err)
+	}
+	sockets := parseNamespaceSockets(out)
+	for idx := range sockets {
+		sockets[idx].LANPeer = isNamespaceLANPeer(cfg, sockets[idx].PeerAddress)
+	}
+	return sockets, nil
+}
+
+func (i *App) namespaceNeighbors(cfg namespaceConfig) ([]namespaceNeighbor, error) {
+	out, err := i.commandOutput("ip", "-n", cfg.Name, "neigh", "show", "dev", cfg.Link)
+	if err != nil {
+		return nil, fmt.Errorf("inspect namespace neighbors: %w", err)
+	}
+	return parseNamespaceNeighbors(out), nil
+}
+
+func summarizeNamespaceClients(cfg namespaceConfig, sockets []namespaceSocket, neighbors []namespaceNeighbor) []namespaceClient {
+	clients := map[string]*namespaceClient{}
+	for _, neighbor := range neighbors {
+		if !isNamespaceLANPeer(cfg, neighbor.Address) {
+			continue
+		}
+		clients[neighbor.Address] = &namespaceClient{
+			Address:       neighbor.Address,
+			MAC:           neighbor.MAC,
+			NeighborState: neighbor.State,
+		}
+	}
+
+	for _, socket := range sockets {
+		if !socket.LANPeer {
+			continue
+		}
+		client, ok := clients[socket.PeerAddress]
+		if !ok {
+			client = &namespaceClient{Address: socket.PeerAddress}
+			clients[socket.PeerAddress] = client
+		}
+		client.Connections++
+		client.Protocols = appendUniqueString(client.Protocols, socket.Protocol)
+	}
+
+	out := make([]namespaceClient, 0, len(clients))
+	for _, client := range clients {
+		sort.Strings(client.Protocols)
+		out = append(out, *client)
+	}
+	sort.Slice(out, func(left, right int) bool {
+		return compareIP(out[left].Address, out[right].Address) < 0
+	})
+	return out
+}
+
+func (i *App) namespaceClientsFromLogs(cfg namespaceConfig, neighbors []namespaceNeighbor) ([]namespaceClient, error) {
+	neighborByAddress := map[string]namespaceNeighbor{}
+	for _, neighbor := range neighbors {
+		neighborByAddress[neighbor.Address] = neighbor
+	}
+
+	clients := map[string]*namespaceClient{}
+	var readErrs []error
+	for _, path := range i.namespaceClientLogFiles() {
+		content, err := readLogTail(path, 1<<20)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			readErrs = append(readErrs, err)
+			continue
+		}
+		mergeClientsFromLog(cfg, clients, neighborByAddress, path, content)
+	}
+
+	out := make([]namespaceClient, 0, len(clients))
+	for _, client := range clients {
+		out = append(out, *client)
+	}
+	sort.Slice(out, func(left, right int) bool {
+		if out[left].LastSeen != out[right].LastSeen {
+			return out[left].LastSeen > out[right].LastSeen
+		}
+		return compareIP(out[left].Address, out[right].Address) < 0
+	})
+	return out, errors.Join(readErrs...)
+}
+
+func (i *App) namespaceClientLogFiles() []string {
+	paths := []string{steamDeckPluginLogFile}
+	if strings.TrimSpace(i.opts.FollowLogFile) != "" {
+		paths = append(paths, i.opts.FollowLogFile)
+	}
+	return uniqueStrings(paths)
+}
+
+func mergeClientsFromLog(cfg namespaceConfig, clients map[string]*namespaceClient, neighbors map[string]namespaceNeighbor, path string, content []byte) {
+	source := filepath.Base(path)
+	for _, line := range strings.Split(string(content), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || !lineLooksClientRelated(line) {
+			continue
+		}
+		mac := namespaceLogMACPattern.FindString(line)
+		lastSeen := leadingLogTimestamp(line)
+		evidence := truncateLogEvidence(line, 180)
+		for _, rawIP := range namespaceLogIPPattern.FindAllString(line, -1) {
+			if !isNamespaceLANPeer(cfg, rawIP) {
+				continue
+			}
+			client := clients[rawIP]
+			if client == nil {
+				client = &namespaceClient{Address: rawIP}
+				clients[rawIP] = client
+			}
+			client.Connections++
+			if client.Source == "" {
+				client.Source = source
+			} else if !strings.Contains(","+client.Source+",", ","+source+",") {
+				client.Source += "," + source
+			}
+			if mac != "" {
+				client.MAC = strings.ToLower(mac)
+			}
+			if neighbor, ok := neighbors[rawIP]; ok {
+				if client.MAC == "" {
+					client.MAC = neighbor.MAC
+				}
+				client.NeighborState = neighbor.State
+			}
+			if lastSeen != "" {
+				client.LastSeen = lastSeen
+			}
+			client.Evidence = evidence
+		}
+	}
+}
+
+func lineLooksClientRelated(line string) bool {
+	lower := strings.ToLower(line)
+	for _, keyword := range []string{
+		"client",
+		"device",
+		"peer",
+		"connect",
+		"login",
+		"auth",
+		"nat",
+		"tproxy",
+		"lan",
+	} {
+		if strings.Contains(lower, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+func leadingLogTimestamp(line string) string {
+	fields := strings.Fields(line)
+	if len(fields) >= 2 && strings.Count(fields[0], "/") == 2 && strings.Count(fields[1], ":") == 2 {
+		return fields[0] + " " + fields[1]
+	}
+	if strings.HasPrefix(line, "[") {
+		if end := strings.Index(line, "]"); end > 0 && end < 40 {
+			return strings.TrimSpace(line[1:end])
+		}
+	}
+	return ""
+}
+
+func truncateLogEvidence(line string, limit int) string {
+	line = strings.ReplaceAll(line, "\t", " ")
+	line = strings.Join(strings.Fields(line), " ")
+	if len(line) <= limit {
+		return line
+	}
+	return line[:limit-3] + "..."
+}
+
+func readLogTail(path string, maxBytes int64) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	offset := info.Size() - maxBytes
+	if offset < 0 {
+		offset = 0
+	}
+	if _, err := file.Seek(offset, io.SeekStart); err != nil {
+		return nil, err
+	}
+	return io.ReadAll(file)
+}
+
+func parseNamespaceSockets(output string) []namespaceSocket {
+	var sockets []namespaceSocket
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 6 {
+			continue
+		}
+		localAddress, localPort := splitSocketEndpoint(fields[4])
+		peerAddress, peerPort := splitSocketEndpoint(fields[5])
+		socket := namespaceSocket{
+			Protocol:     fields[0],
+			State:        fields[1],
+			LocalAddress: localAddress,
+			LocalPort:    localPort,
+			PeerAddress:  peerAddress,
+			PeerPort:     peerPort,
+		}
+		if len(fields) > 6 {
+			socket.Process = strings.Join(fields[6:], " ")
+		}
+		sockets = append(sockets, socket)
+	}
+	sort.Slice(sockets, func(left, right int) bool {
+		a := sockets[left]
+		b := sockets[right]
+		if a.Protocol != b.Protocol {
+			return a.Protocol < b.Protocol
+		}
+		if a.LocalAddress != b.LocalAddress {
+			return compareIP(a.LocalAddress, b.LocalAddress) < 0
+		}
+		if a.LocalPort != b.LocalPort {
+			return a.LocalPort < b.LocalPort
+		}
+		if a.PeerAddress != b.PeerAddress {
+			return compareIP(a.PeerAddress, b.PeerAddress) < 0
+		}
+		return a.PeerPort < b.PeerPort
+	})
+	return sockets
+}
+
+func parseNamespaceNeighbors(output string) []namespaceNeighbor {
+	var neighbors []namespaceNeighbor
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || net.ParseIP(fields[0]) == nil {
+			continue
+		}
+		neighbor := namespaceNeighbor{Address: fields[0]}
+		for idx := 1; idx < len(fields); idx++ {
+			if fields[idx] == "lladdr" && idx+1 < len(fields) {
+				neighbor.MAC = fields[idx+1]
+				idx++
+				continue
+			}
+			if isNeighborState(fields[idx]) {
+				neighbor.State = fields[idx]
+			}
+		}
+		neighbors = append(neighbors, neighbor)
+	}
+	sort.Slice(neighbors, func(left, right int) bool {
+		return compareIP(neighbors[left].Address, neighbors[right].Address) < 0
+	})
+	return neighbors
+}
+
+func splitSocketEndpoint(endpoint string) (string, string) {
+	endpoint = strings.TrimSpace(endpoint)
+	if endpoint == "" {
+		return "", ""
+	}
+	if host, port, err := net.SplitHostPort(endpoint); err == nil {
+		return strings.Trim(host, "[]"), port
+	}
+	idx := strings.LastIndex(endpoint, ":")
+	if idx < 0 {
+		return strings.Trim(endpoint, "[]"), ""
+	}
+	return strings.Trim(endpoint[:idx], "[]"), endpoint[idx+1:]
+}
+
+func isNamespaceLANPeer(cfg namespaceConfig, address string) bool {
+	ip := net.ParseIP(address)
+	if ip == nil || ip.IsUnspecified() {
+		return false
+	}
+	namespaceIP, network, err := net.ParseCIDR(cfg.Address)
+	if err != nil || !network.Contains(ip) {
+		return false
+	}
+	if ip.Equal(namespaceIP) {
+		return false
+	}
+	gateway := net.ParseIP(cfg.Gateway)
+	return gateway == nil || !ip.Equal(gateway)
+}
+
+func isNeighborState(value string) bool {
+	switch value {
+	case "INCOMPLETE", "REACHABLE", "STALE", "DELAY", "PROBE", "FAILED", "NOARP", "PERMANENT":
+		return true
+	default:
+		return false
+	}
+}
+
+func appendUniqueString(values []string, value string) []string {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
+func uniqueStrings(values []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
+func compareIP(left string, right string) int {
+	leftIP := net.ParseIP(left)
+	rightIP := net.ParseIP(right)
+	if leftIP == nil || rightIP == nil {
+		return strings.Compare(left, right)
+	}
+	leftBytes := leftIP.To16()
+	rightBytes := rightIP.To16()
+	if left4 := leftIP.To4(); left4 != nil {
+		leftBytes = left4
+	}
+	if right4 := rightIP.To4(); right4 != nil {
+		rightBytes = right4
+	}
+	return bytes.Compare(leftBytes, rightBytes)
 }
 
 func (i *App) cleanupLegacyPIDFile(pids []int) {

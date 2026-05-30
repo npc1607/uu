@@ -11,8 +11,10 @@ import (
 )
 
 const (
-	steamDeckIdentityPatchMarker = "# uu-go: persist Steam Deck identity in install dir"
-	steamDeckRuntimeDir          = "/tmp/uu"
+	steamDeckIdentityPatchMarker  = "# uu-go: persist Steam Deck identity in install dir"
+	steamDeckPluginLogPatchMarker = "# uu-go: capture uuplugin stdout/stderr"
+	steamDeckRuntimeDir           = "/tmp/uu"
+	steamDeckPluginLogFile        = steamDeckRuntimeDir + "/uuplugin.log"
 )
 
 var steamDeckIdentityFiles = []string{".uuplugin_uuid", ".uid"}
@@ -21,7 +23,10 @@ func (i *App) patchSteamDeckMonitorIdentity() error {
 	if i.params.router != router.SteamDeck {
 		return nil
 	}
-	return patchMonitorIdentityPersistence(i.params.monitorFile)
+	if err := patchMonitorIdentityPersistence(i.params.monitorFile); err != nil {
+		return err
+	}
+	return patchMonitorPluginLogging(i.params.monitorFile)
 }
 
 func patchMonitorIdentityPersistence(path string) error {
@@ -80,6 +85,46 @@ func patchMonitorIdentityPersistence(path string) error {
 	script = strings.Replace(script, loopAnchor, "    check_backtar_file\n    check_plugin_file\n    persist_steam_deck_identity\n    check_acc\n    sleep 1\n    persist_steam_deck_identity\n    check_running", 1)
 
 	return os.WriteFile(path, []byte(script), fileModeOrDefault(path, 0o755))
+}
+
+func patchMonitorPluginLogging(path string) error {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	script := string(content)
+	if strings.Contains(script, steamDeckPluginLogPatchMarker) {
+		return nil
+	}
+
+	replacements := map[string]string{
+		`${exefile} "${confile}" >/dev/null 2>&1 &`:                  `${exefile} "${confile}" >>"${RUNNING_DIR}/uuplugin.log" 2>&1 &`,
+		`${exefile} "${RUNNING_DIR}/$PLUGIN_CONF" >/dev/null 2>&1 &`: `${exefile} "${RUNNING_DIR}/$PLUGIN_CONF" >>"${RUNNING_DIR}/uuplugin.log" 2>&1 &`,
+	}
+	updated := script
+	for old, replacement := range replacements {
+		updated = strings.ReplaceAll(updated, old, replacement)
+	}
+	if updated == script {
+		return fmt.Errorf("monitor script does not contain uuplugin start command")
+	}
+
+	const startAnchor = "start_acc() {\n"
+	logSetup := `start_acc() {
+    ` + steamDeckPluginLogPatchMarker + `
+    touch "${RUNNING_DIR}/uuplugin.log" >/dev/null 2>&1 || true
+    if [ -f "${RUNNING_DIR}/uuplugin.log" ]; then
+        local plugin_log_size=$(wc -c < "${RUNNING_DIR}/uuplugin.log" 2>/dev/null || echo 0)
+        [ "${plugin_log_size}" -gt 1048576 ] && : > "${RUNNING_DIR}/uuplugin.log"
+    fi
+`
+	if !strings.Contains(updated, startAnchor) {
+		return fmt.Errorf("monitor script does not contain start_acc anchor")
+	}
+	updated = strings.Replace(updated, startAnchor, logSetup, 1)
+
+	return os.WriteFile(path, []byte(updated), fileModeOrDefault(path, 0o755))
 }
 
 func (i *App) persistSteamDeckRuntimeIdentity() error {

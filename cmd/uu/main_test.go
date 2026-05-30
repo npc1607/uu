@@ -30,3 +30,16 @@ func TestParseCommandOptionsSubcommand(t *testing.T) {
 		t.Fatalf("NamespaceAddress = %q", opts.NamespaceAddress)
 	}
 }
+
+func TestParseCommandOptionsNamespaceInstall(t *testing.T) {
+	command, opts, err := parseCommandOptions([]string{"ns-install", "--namespace-parent", "enp34s0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if command != "ns-install" {
+		t.Fatalf("command = %q, want ns-install", command)
+	}
+	if opts.NamespaceParent != "enp34s0" {
+		t.Fatalf("NamespaceParent = %q", opts.NamespaceParent)
+	}
+}

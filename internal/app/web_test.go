@@ -57,6 +57,35 @@ func TestControlHandlerStatus(t *testing.T) {
 	}
 }
 
+func TestControlHandlerServesEmbeddedAssets(t *testing.T) {
+	handler := newControlHandler(controlActions{
+		status:  func() (namespaceState, error) { return namespaceState{Name: "uu-ns"}, nil },
+		start:   func() error { return nil },
+		stop:    func() error { return nil },
+		restart: func() error { return nil },
+	}, "test-token")
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("index status code = %d, want 200", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), `content="test-token"`) {
+		t.Fatalf("index page did not include injected token")
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/assets/style.css", nil)
+	rr = httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("style status code = %d, want 200", rr.Code)
+	}
+	if !strings.Contains(rr.Header().Get("Content-Type"), "text/css") {
+		t.Fatalf("style content type = %q", rr.Header().Get("Content-Type"))
+	}
+}
+
 func TestControlHandlerStartRequiresToken(t *testing.T) {
 	handler := newControlHandler(controlActions{
 		status:  func() (namespaceState, error) { return namespaceState{Name: "uu-ns"}, nil },

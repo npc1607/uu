@@ -6,10 +6,16 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/npc1607/uu/internal/plugin"
 	"github.com/npc1607/uu/internal/router"
+)
+
+const (
+	namespaceServiceName = "uuplugin-ns"
+	namespaceServiceFile = "/etc/systemd/system/uuplugin-ns.service"
 )
 
 func (i *App) configRouter() error {
@@ -112,17 +118,7 @@ func (i *App) configSteamDeckSystemd() error {
 	if os.Geteuid() != 0 {
 		return fmt.Errorf("root privileges required to write %s; rerun with sudo", service)
 	}
-	content := fmt.Sprintf(`[Unit]
-Description=UU Plugin
-Wants=network-online.target
-After=network.target network-online.target
-
-[Service]
-ExecStart=/bin/sh %s
-
-[Install]
-WantedBy=default.target
-`, filepath.Join(i.params.installDir, plugin.MonitorFilename))
+	content := steamDeckSystemdUnit(filepath.Join(i.params.installDir, plugin.MonitorFilename))
 
 	if err := os.WriteFile(service, []byte(content), 0o644); err != nil {
 		return err
@@ -134,6 +130,165 @@ WantedBy=default.target
 		return err
 	}
 	return i.runCommand("systemctl", "start", "uuplugin")
+}
+
+func steamDeckSystemdUnit(monitorPath string) string {
+	return fmt.Sprintf(`[Unit]
+Description=UU Plugin
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/bin/sh %s
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+`, monitorPath)
+}
+
+func (i *App) NamespaceInstall() int {
+	i.openLog(true)
+	defer i.closeLog()
+	if i.logPath != "" {
+		fmt.Fprintf(i.stdout, "Install log: %s\n", i.logPath)
+	}
+	if err := i.initParams(); err != nil {
+		return i.failNamespaceInstall(9, "init params failed: %v", err)
+	}
+	if os.Geteuid() != 0 {
+		return i.failNamespaceInstall(1, "root privileges required to write %s; rerun with sudo", namespaceServiceFile)
+	}
+	if err := validateLocalListen(i.params.webListen); err != nil {
+		return i.failNamespaceInstall(1, "validate web listen failed: %v", err)
+	}
+
+	cfg, err := i.resolveNamespaceConfig()
+	if err != nil {
+		return i.failNamespaceInstall(1, "resolve namespace config failed: %v", err)
+	}
+	if err := validateNamespaceConfig(cfg); err != nil {
+		return i.failNamespaceInstall(1, "validate namespace config failed: %v", err)
+	}
+	if err := i.ensureNamespacePrereqs(); err != nil {
+		return i.failNamespaceInstall(1, "namespace prerequisites failed: %v", err)
+	}
+	if err := i.prepareNamespaceMonitor(); err != nil {
+		return i.failNamespaceInstall(5, "prepare namespace monitor failed: %v", err)
+	}
+	if err := i.configNamespaceSystemd(cfg); err != nil {
+		return i.failNamespaceInstall(6, "configure namespace service failed: %v", err)
+	}
+	if err := i.waitNamespacePlugin(cfg.Name, namespaceActionTimeout); err != nil {
+		return i.failNamespaceInstall(7, "uuplugin did not start in namespace: %v", err)
+	}
+
+	fmt.Fprintf(i.stdout, "Namespace installation succeeded! service=%s web=http://%s/\n", namespaceServiceName, i.params.webListen)
+	return i.finishSuccessfulInstall()
+}
+
+func (i *App) failNamespaceInstall(code int, format string, args ...any) int {
+	msg := fmt.Sprintf(format, args...)
+	fmt.Fprintf(i.stderr, "Namespace installation failed: %s\n", msg)
+	if i.logPath != "" {
+		fmt.Fprintf(i.stderr, "Install log: %s\n", i.logPath)
+	}
+	i.logf("namespace installation failed: %s", msg)
+	return code
+}
+
+func (i *App) configNamespaceSystemd(cfg namespaceConfig) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	exe, err = filepath.Abs(exe)
+	if err != nil {
+		return err
+	}
+
+	content := namespaceSystemdUnit(
+		exe,
+		i.namespaceServiceArgs("ns-serve", cfg),
+		i.namespaceServiceArgs("ns-stop", cfg),
+	)
+	if err := os.WriteFile(namespaceServiceFile, []byte(content), 0o644); err != nil {
+		return err
+	}
+
+	_ = i.runSilent("systemctl", "disable", "uuplugin")
+	_ = i.runSilent("systemctl", "stop", "uuplugin")
+	if err := i.runCommand("systemctl", "daemon-reload"); err != nil {
+		return err
+	}
+	if err := i.runCommand("systemctl", "enable", namespaceServiceName); err != nil {
+		return err
+	}
+	return i.runCommand("systemctl", "restart", namespaceServiceName)
+}
+
+func (i *App) namespaceServiceArgs(command string, cfg namespaceConfig) []string {
+	args := []string{
+		command,
+		"--router", i.params.router,
+		"--model", i.params.model,
+		"--install-dir", i.params.installDir,
+		"--log-dir", i.opts.LogDir,
+		"--listen", i.params.webListen,
+		"--namespace-name", cfg.Name,
+		"--namespace-parent", cfg.Parent,
+		"--namespace-link", cfg.Link,
+		"--namespace-address", cfg.Address,
+		"--namespace-gateway", cfg.Gateway,
+		"--namespace-dns", strings.Join(cfg.DNS, ","),
+		"--namespace-mode", cfg.Mode,
+		"--follow-log-file", i.opts.FollowLogFile,
+		"--follow-log-lines", strconv.Itoa(i.opts.FollowLogLines),
+		"--follow-log-timeout", i.opts.FollowLogTimeout.String(),
+	}
+	if i.opts.FollowLogs {
+		args = append(args, "--follow-logs")
+	}
+	return args
+}
+
+func namespaceSystemdUnit(exePath string, startArgs []string, stopArgs []string) string {
+	return fmt.Sprintf(`[Unit]
+Description=UU Plugin Namespace
+Wants=network-online.target
+After=network-online.target
+Conflicts=uuplugin.service
+
+[Service]
+Type=simple
+ExecStart=%s
+ExecStop=%s
+Restart=always
+RestartSec=5s
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target
+`, systemdExecLine(exePath, startArgs), systemdExecLine(exePath, stopArgs))
+}
+
+func systemdExecLine(exePath string, args []string) string {
+	parts := make([]string, 0, len(args)+1)
+	parts = append(parts, systemdQuoteArg(exePath))
+	for _, arg := range args {
+		parts = append(parts, systemdQuoteArg(arg))
+	}
+	return strings.Join(parts, " ")
+}
+
+func systemdQuoteArg(value string) string {
+	escaped := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "%", "%%").Replace(value)
+	if escaped == "" || strings.ContainsAny(escaped, " \t\n\r\"\\") {
+		return `"` + escaped + `"`
+	}
+	return escaped
 }
 
 func (i *App) configBootupImplementation() error {
