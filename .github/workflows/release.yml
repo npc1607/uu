@@ -24,6 +24,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -56,10 +57,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ inputs.tag || github.ref_name }}
         run: |
+          set -eu
+          notes_file="$(mktemp)"
+          git for-each-ref "refs/tags/${TAG_NAME}" --format='%(contents)' > "${notes_file}"
+          if [ ! -s "${notes_file}" ]; then
+            printf 'Automated release for %s.\n' "${TAG_NAME}" > "${notes_file}"
+          fi
           if ! gh release view "${TAG_NAME}" >/dev/null 2>&1; then
             gh release create "${TAG_NAME}" \
               --title "uu ${TAG_NAME}" \
-              --notes "Automated release for ${TAG_NAME}."
+              --notes-file "${notes_file}"
           fi
 
       - name: Upload release assets
