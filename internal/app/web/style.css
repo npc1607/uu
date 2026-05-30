@@ -237,7 +237,7 @@ h2 {
 
 .metric-grid {
   display: grid;
-  grid-template-columns: minmax(190px, 1.45fr) repeat(3, minmax(92px, .85fr));
+  grid-template-columns: minmax(190px, 1.15fr) repeat(4, minmax(86px, .72fr));
   gap: 12px;
 }
 
@@ -278,6 +278,48 @@ h2 {
   font-size: var(--fit-font-size, clamp(16px, 1.9vw, 24px));
 }
 
+.latency-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 46px;
+  margin-top: 14px;
+  padding: 0 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(91, 124, 255, .16);
+  background: rgba(255, 255, 255, .76);
+  color: #24406e;
+  font-size: clamp(18px, 2vw, 26px);
+  font-weight: 850;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.latency-good {
+  border-color: rgba(6, 182, 212, .28);
+  background: linear-gradient(135deg, rgba(6, 182, 212, .14), rgba(37, 99, 235, .10));
+  color: #0f766e;
+}
+
+.latency-fair {
+  border-color: rgba(124, 58, 237, .26);
+  background: linear-gradient(135deg, rgba(124, 58, 237, .12), rgba(59, 130, 246, .10));
+  color: #5b21b6;
+}
+
+.latency-poor {
+  border-color: rgba(219, 39, 119, .24);
+  background: linear-gradient(135deg, rgba(219, 39, 119, .10), rgba(124, 58, 237, .10));
+  color: #be185d;
+}
+
+.latency-unknown {
+  border-color: rgba(104, 116, 138, .18);
+  background: #f4f7fb;
+  color: #5b687c;
+}
+
 .fit-value {
   white-space: nowrap;
   overflow: hidden;
@@ -306,6 +348,76 @@ h2 {
 
 .accent-pink {
   box-shadow: inset 0 3px 0 var(--pink);
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid rgba(91, 124, 255, .16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .82);
+  color: #24324a;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.protocol-tag {
+  border-color: rgba(37, 99, 235, .20);
+  background: linear-gradient(135deg, rgba(37, 99, 235, .10), rgba(124, 58, 237, .08));
+  color: #1d4ed8;
+}
+
+.state-tag {
+  border-color: rgba(104, 116, 138, .18);
+}
+
+.state-listen,
+.state-unconn {
+  border-color: rgba(6, 182, 212, .24);
+  background: rgba(6, 182, 212, .10);
+  color: #0f766e;
+}
+
+.state-estab {
+  border-color: rgba(37, 99, 235, .22);
+  background: linear-gradient(135deg, rgba(37, 99, 235, .12), rgba(124, 58, 237, .08));
+  color: #1d4ed8;
+}
+
+.state-time-wait {
+  border-color: rgba(124, 58, 237, .24);
+  background: rgba(124, 58, 237, .10);
+  color: #6d28d9;
+}
+
+.state-close-wait,
+.state-close {
+  border-color: rgba(219, 39, 119, .22);
+  background: rgba(219, 39, 119, .10);
+  color: #be185d;
+}
+
+.state-syn-sent {
+  border-color: rgba(168, 85, 247, .22);
+  background: rgba(168, 85, 247, .10);
+  color: #7c3aed;
+}
+
+.peer-tag {
+  border-color: rgba(6, 182, 212, .18);
+  background: rgba(6, 182, 212, .08);
+  color: #0f766e;
+}
+
+.peer-wan {
+  border-color: rgba(104, 116, 138, .18);
+  background: #f4f7fb;
+  color: #5b687c;
 }
 
 .badge {

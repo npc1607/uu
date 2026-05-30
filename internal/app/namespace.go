@@ -65,6 +65,7 @@ type namespaceSocket struct {
 	PeerPort     string `json:"peer_port"`
 	Process      string `json:"process,omitempty"`
 	LANPeer      bool   `json:"lan_peer,omitempty"`
+	RTT          string `json:"rtt,omitempty"`
 }
 
 type namespaceNeighbor struct {
@@ -466,7 +467,7 @@ func (i *App) namespaceNetworkState(cfg namespaceConfig) ([]namespaceSocket, []n
 }
 
 func (i *App) namespaceSockets(cfg namespaceConfig) ([]namespaceSocket, error) {
-	out, err := i.commandOutput("ip", "netns", "exec", cfg.Name, "ss", "-H", "-tunap")
+	out, err := i.commandOutput("ip", "netns", "exec", cfg.Name, "ss", "-H", "-tunapi")
 	if err != nil {
 		return nil, fmt.Errorf("inspect namespace sockets: %w", err)
 	}
@@ -487,25 +488,36 @@ func (i *App) namespaceNeighbors(cfg namespaceConfig) ([]namespaceNeighbor, erro
 
 func parseNamespaceSockets(output string) []namespaceSocket {
 	var sockets []namespaceSocket
+	current := -1
 	for _, line := range strings.Split(output, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 6 {
+		line = strings.TrimSpace(line)
+		if line == "" {
 			continue
 		}
-		localAddress, localPort := splitSocketEndpoint(fields[4])
-		peerAddress, peerPort := splitSocketEndpoint(fields[5])
-		socket := namespaceSocket{
-			Protocol:     fields[0],
-			State:        fields[1],
-			LocalAddress: localAddress,
-			LocalPort:    localPort,
-			PeerAddress:  peerAddress,
-			PeerPort:     peerPort,
+		fields := strings.Fields(line)
+		if len(fields) >= 6 && isNamespaceSocketProtocol(fields[0]) {
+			localAddress, localPort := splitSocketEndpoint(fields[4])
+			peerAddress, peerPort := splitSocketEndpoint(fields[5])
+			socket := namespaceSocket{
+				Protocol:     fields[0],
+				State:        fields[1],
+				LocalAddress: localAddress,
+				LocalPort:    localPort,
+				PeerAddress:  peerAddress,
+				PeerPort:     peerPort,
+			}
+			if len(fields) > 6 {
+				socket.Process = strings.Join(fields[6:], " ")
+			}
+			sockets = append(sockets, socket)
+			current = len(sockets) - 1
+			continue
 		}
-		if len(fields) > 6 {
-			socket.Process = strings.Join(fields[6:], " ")
+		if current >= 0 {
+			if rtt, ok := parseNamespaceSocketRTT(line); ok {
+				sockets[current].RTT = rtt
+			}
 		}
-		sockets = append(sockets, socket)
 	}
 	sort.Slice(sockets, func(left, right int) bool {
 		a := sockets[left]
@@ -525,6 +537,37 @@ func parseNamespaceSockets(output string) []namespaceSocket {
 		return a.PeerPort < b.PeerPort
 	})
 	return sockets
+}
+
+func parseNamespaceSocketRTT(line string) (string, bool) {
+	idx := strings.Index(line, "rtt:")
+	if idx < 0 {
+		return "", false
+	}
+	value := line[idx+len("rtt:"):]
+	if end := strings.IndexAny(value, " \t"); end >= 0 {
+		value = value[:end]
+	}
+	if slash := strings.IndexByte(value, '/'); slash >= 0 {
+		value = value[:slash]
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", false
+	}
+	if _, err := strconv.ParseFloat(value, 64); err != nil {
+		return "", false
+	}
+	return value + " ms", true
+}
+
+func isNamespaceSocketProtocol(value string) bool {
+	switch value {
+	case "tcp", "tcp4", "tcp6", "udp", "udp4", "udp6", "raw", "raw4", "raw6", "sctp", "sctp4", "sctp6", "dccp", "dccp4", "dccp6", "unix":
+		return true
+	default:
+		return false
+	}
 }
 
 func parseNamespaceNeighbors(output string) []namespaceNeighbor {

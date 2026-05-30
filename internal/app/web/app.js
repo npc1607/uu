@@ -17,6 +17,100 @@ const endpoint = (address, port) => {
   return `${host}:${port || "*"}`;
 };
 
+const parseIPv4 = (value) => {
+  if (!value) return null;
+  const parts = value.trim().split(".");
+  if (parts.length !== 4) return null;
+  const octets = [];
+  for (const part of parts) {
+    if (part === "" || !/^\d+$/.test(part)) return null;
+    const octet = Number(part);
+    if (!Number.isInteger(octet) || octet < 0 || octet > 255) return null;
+    octets.push(octet);
+  }
+  return (((octets[0] * 256 + octets[1]) * 256 + octets[2]) * 256 + octets[3]) >>> 0;
+};
+
+const parseCidr = (value) => {
+  if (!value) return null;
+  const parts = value.trim().split("/");
+  const address = parseIPv4(parts[0]);
+  if (address === null) return null;
+  const prefix = parts.length > 1 ? Number(parts[1]) : 32;
+  if (!Number.isInteger(prefix) || prefix < 0 || prefix > 32) return null;
+  const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+  return { address, mask };
+};
+
+const isSameSubnet = (address, cidr) => {
+  const ip = parseIPv4(address);
+  const network = parseCidr(cidr);
+  if (ip === null || network === null) return false;
+  return (ip & network.mask) === (network.address & network.mask);
+};
+
+const externalSockets = (state) => {
+  const phoneIP = state.address ? state.address.split("/")[0] : "";
+  return (state.sockets || []).filter((socket) => {
+    if (!socket.peer_address || socket.peer_address === "0.0.0.0" || socket.peer_address === "127.0.0.1") {
+      return false;
+    }
+    if (socket.peer_address === state.gateway || socket.peer_address === phoneIP) {
+      return false;
+    }
+    return !isSameSubnet(socket.peer_address, state.address);
+  });
+};
+
+const activeAccelerationSockets = (state) => {
+  return externalSockets(state).filter((socket) => {
+    const peerPort = String(socket.peer_port || "");
+    return socket.state === "ESTAB" && peerPort !== "16000";
+  });
+};
+
+const parseLatency = (value) => {
+  if (!value) return null;
+  const latency = Number.parseFloat(String(value).replace("ms", "").trim());
+  return Number.isFinite(latency) ? latency : null;
+};
+
+const formatLatency = (latency) => {
+  if (!Number.isFinite(latency)) return "";
+  return `${latency < 10 ? latency.toFixed(1) : Math.round(latency)} ms`;
+};
+
+const latencyClass = (latency) => {
+  if (!Number.isFinite(latency)) return "latency-unknown";
+  if (latency <= 45) return "latency-good";
+  if (latency <= 90) return "latency-fair";
+  return "latency-poor";
+};
+
+const tag = (text, className = "") => {
+  const node = document.createElement("span");
+  node.className = `tag ${className}`.trim();
+  node.textContent = text || "-";
+  return node;
+};
+
+const stateTag = (state) => {
+  const value = state || "-";
+  const normalized = value.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return tag(value, `state-tag state-${normalized}`);
+};
+
+const protocolTag = (protocol) => tag(protocol || "-", "protocol-tag");
+
+const latencyTag = (rtt) => {
+  const latency = parseLatency(rtt);
+  return tag(formatLatency(latency) || "No RTT", `latency-tag ${latencyClass(latency)}`);
+};
+
+const peerTag = (value) => {
+  return value ? tag("LAN", "peer-tag") : tag("WAN", "peer-tag peer-wan");
+};
+
 const pluginHealth = (state) => {
   const running = Boolean(state.exists && state.plugin_pids && state.plugin_pids.length);
   if (!running) {
@@ -26,32 +120,61 @@ const pluginHealth = (state) => {
     return { label: "Degraded", className: "degraded", message: "Status inspection failed" };
   }
 
-  const phoneIP = state.address ? state.address.split("/")[0] : "";
   const sockets = state.sockets || [];
-  const neighbors = state.neighbors || [];
-  const clientNeighbors = neighbors.filter((neighbor) => {
-    return neighbor.address && neighbor.address !== state.gateway && neighbor.address !== phoneIP;
-  });
-  const hasLANPeer = sockets.some((socket) => socket.lan_peer);
-  const hasClient = hasLANPeer || clientNeighbors.length > 0;
-  if (hasClient) {
-    return { label: "Active", className: "running", message: "Phone client detected" };
-  }
-
   const hasUUListener = sockets.some((socket) => {
     const port = String(socket.local_port || "");
     return (port === "16363" || port === "14554") && (socket.state === "LISTEN" || socket.state === "UNCONN");
   });
-  const hasUpstream = sockets.some((socket) => {
-    return socket.state === "ESTAB" && socket.local_address === phoneIP && socket.peer_address !== state.gateway;
+
+  const activePeers = activeAccelerationSockets(state);
+  if (activePeers.length > 0) {
+    return {
+      label: "Active",
+      className: "running",
+      message: `Acceleration active (${activePeers.length} external connection${activePeers.length === 1 ? "" : "s"})`,
+    };
+  }
+
+  const coolingPeers = externalSockets(state).filter((socket) => {
+    const peerPort = String(socket.peer_port || "");
+    return socket.state === "TIME-WAIT" && peerPort !== "16000";
   });
-  if (hasUUListener && hasUpstream) {
-    return { label: "No Phone", className: "waiting", message: "Plugin online, no phone client seen" };
+  if (coolingPeers.length > 0) {
+    return {
+      label: "Cooling",
+      className: "waiting",
+      message: `Acceleration recently disconnected (${coolingPeers.length} socket${coolingPeers.length === 1 ? "" : "s"} cooling down)`,
+    };
   }
-  if (hasUUListener) {
-    return { label: "Ready", className: "waiting", message: "Plugin listening, waiting for phone" };
+
+  const controlPeers = externalSockets(state).filter((socket) => {
+    return socket.state === "ESTAB" && String(socket.peer_port || "") === "16000";
+  });
+  if (hasUUListener || controlPeers.length > 0) {
+    return {
+      label: "Ready",
+      className: "waiting",
+      message: controlPeers.length > 0 ? "Plugin online, waiting for acceleration traffic" : "Plugin listening, waiting for phone",
+    };
   }
+
   return { label: "Degraded", className: "degraded", message: "Plugin process has no UU listener" };
+};
+
+const setLatencyMetric = (state) => {
+  const node = document.getElementById("latency");
+  if (!node) return;
+  const values = activeAccelerationSockets(state)
+    .map((socket) => parseLatency(socket.rtt))
+    .filter((latency) => Number.isFinite(latency));
+  if (!values.length) {
+    node.textContent = "No RTT";
+    node.className = "latency-pill latency-unknown";
+    return;
+  }
+  const average = values.reduce((sum, latency) => sum + latency, 0) / values.length;
+  node.textContent = `${formatLatency(average)} avg`;
+  node.className = `latency-pill ${latencyClass(average)}`;
 };
 
 let fitFrame = 0;
@@ -115,7 +238,12 @@ const renderRows = (id, rows, columns) => {
     const row = document.createElement("tr");
     columns.forEach((column) => {
       const cell = document.createElement("td");
-      cell.textContent = column(item) || "-";
+      const value = column(item);
+      if (value instanceof Node) {
+        cell.appendChild(value);
+      } else {
+        cell.textContent = value || "-";
+      }
       row.appendChild(cell);
     });
     body.appendChild(row);
@@ -211,6 +339,7 @@ function render(state) {
   setText("running-signal", health.message);
   setText("neighbors-count", String((state.neighbors || []).length));
   setText("sockets-count", String((state.sockets || []).length));
+  setLatencyMetric(state);
 
   renderRows("neighbors-body", state.neighbors || [], [
     (neighbor) => neighbor.address,
@@ -218,11 +347,12 @@ function render(state) {
     (neighbor) => neighbor.state,
   ]);
   renderRows("sockets-body", state.sockets || [], [
-    (socket) => socket.protocol,
-    (socket) => socket.state,
+    (socket) => protocolTag(socket.protocol),
+    (socket) => stateTag(socket.state),
     (socket) => endpoint(socket.local_address, socket.local_port),
     (socket) => endpoint(socket.peer_address, socket.peer_port),
-    (socket) => socket.lan_peer ? "yes" : "",
+    (socket) => latencyTag(socket.rtt),
+    (socket) => peerTag(socket.lan_peer),
     (socket) => socket.process,
   ]);
 

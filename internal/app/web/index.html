@@ -51,6 +51,10 @@
             <span>Sockets</span>
             <strong id="sockets-count">0</strong>
           </div>
+          <div class="metric-card accent-violet">
+            <span>Latency</span>
+            <strong id="latency" class="latency-pill latency-unknown">-</strong>
+          </div>
           <div class="metric-card accent-pink">
             <span>Neighbors</span>
             <strong id="neighbors-count">0</strong>
@@ -102,7 +106,7 @@
       <section class="data-card wide">
         <div class="section-heading">
           <h2>Namespace Sockets</h2>
-          <span class="section-kicker">ss -tunap</span>
+          <span class="section-kicker">ss -tunapi</span>
         </div>
         <div class="table-wrap">
           <table>
@@ -112,6 +116,7 @@
                 <th>State</th>
                 <th>Local endpoint</th>
                 <th>Peer endpoint</th>
+                <th>Latency</th>
                 <th>LAN peer</th>
                 <th>Process</th>
               </tr>

@@ -38,6 +38,7 @@ func TestValidateNamespaceConfig(t *testing.T) {
 func TestParseNamespaceSockets(t *testing.T) {
 	output := `tcp LISTEN 0 128 0.0.0.0:16363 0.0.0.0:* users:(("uuplugin",pid=100,fd=7))
 tcp ESTAB 0 0 192.168.1.250:16363 192.168.1.8:53210 users:(("uuplugin",pid=100,fd=8))
+ cubic wscale:7,7 rto:204 rtt:3.456/0.123 ato:40 mss:1448 pmtu:1500
 udp UNCONN 0 0 0.0.0.0:5353 0.0.0.0:* users:(("uuplugin",pid=100,fd=9))
 `
 	got := parseNamespaceSockets(output)
@@ -57,6 +58,9 @@ udp UNCONN 0 0 0.0.0.0:5353 0.0.0.0:* users:(("uuplugin",pid=100,fd=9))
 	}
 	if established.PeerAddress != "192.168.1.8" || established.PeerPort != "53210" {
 		t.Fatalf("peer endpoint = %s:%s", established.PeerAddress, established.PeerPort)
+	}
+	if established.RTT != "3.456 ms" {
+		t.Fatalf("rtt = %q, want 3.456 ms", established.RTT)
 	}
 }
 
