@@ -14,6 +14,14 @@ type File struct {
 	Model            string
 	InstallDir       string
 	LogDir           string
+	WebListen        string
+	NamespaceName    string
+	NamespaceParent  string
+	NamespaceLink    string
+	NamespaceAddress string
+	NamespaceGateway string
+	NamespaceDNS     string
+	NamespaceMode    string
 	FollowLogs       *bool
 	FollowLogFile    string
 	FollowLogLines   *int
@@ -51,6 +59,22 @@ func Load(path string) (File, error) {
 			cfg.InstallDir = value
 		case "log_dir":
 			cfg.LogDir = value
+		case "web_listen":
+			cfg.WebListen = value
+		case "namespace_name":
+			cfg.NamespaceName = value
+		case "namespace_parent":
+			cfg.NamespaceParent = value
+		case "namespace_link":
+			cfg.NamespaceLink = value
+		case "namespace_address":
+			cfg.NamespaceAddress = value
+		case "namespace_gateway":
+			cfg.NamespaceGateway = value
+		case "namespace_dns":
+			cfg.NamespaceDNS = value
+		case "namespace_mode":
+			cfg.NamespaceMode = value
 		case "follow_logs":
 			parsed, err := strconv.ParseBool(value)
 			if err != nil {
@@ -93,6 +117,30 @@ func (c File) Apply(opts *Options) {
 	}
 	if c.LogDir != "" {
 		opts.LogDir = c.LogDir
+	}
+	if c.WebListen != "" {
+		opts.WebListen = c.WebListen
+	}
+	if c.NamespaceName != "" {
+		opts.NamespaceName = c.NamespaceName
+	}
+	if c.NamespaceParent != "" {
+		opts.NamespaceParent = c.NamespaceParent
+	}
+	if c.NamespaceLink != "" {
+		opts.NamespaceLink = c.NamespaceLink
+	}
+	if c.NamespaceAddress != "" {
+		opts.NamespaceAddress = c.NamespaceAddress
+	}
+	if c.NamespaceGateway != "" {
+		opts.NamespaceGateway = c.NamespaceGateway
+	}
+	if c.NamespaceDNS != "" {
+		opts.NamespaceDNS = c.NamespaceDNS
+	}
+	if c.NamespaceMode != "" {
+		opts.NamespaceMode = c.NamespaceMode
 	}
 	if c.FollowLogs != nil {
 		opts.FollowLogs = *c.FollowLogs

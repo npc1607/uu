@@ -23,6 +23,17 @@ func (i *App) runSilent(name string, args ...string) error {
 	return cmd.Run()
 }
 
+func (i *App) commandOutput(name string, args ...string) (string, error) {
+	i.logf("run output: %s %s", name, strings.Join(args, " "))
+	cmd := exec.Command(name, args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		i.logf("run output failed: %s %s: %v: %s", name, strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+		return string(out), err
+	}
+	return string(out), nil
+}
+
 func (i *App) startDetached(name string, args ...string) error {
 	i.logf("start detached: %s %s", name, strings.Join(args, " "))
 	cmd := exec.Command(name, args...)

@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/npc1607/uu/internal/config"
@@ -28,6 +29,7 @@ type App struct {
 	logger      *log.Logger
 	logWriter   io.Writer
 	initialized bool
+	mu          sync.Mutex
 }
 
 type Option func(*App)

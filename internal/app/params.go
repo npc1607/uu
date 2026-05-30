@@ -19,6 +19,14 @@ type runtimeParams struct {
 	monitorConfig        string
 	uninstallDownloadURL string
 	monitorDownloadURL   string
+	webListen            string
+	namespaceName        string
+	namespaceParent      string
+	namespaceLink        string
+	namespaceAddress     string
+	namespaceGateway     string
+	namespaceDNS         string
+	namespaceMode        string
 }
 
 func (i *App) initParams() error {
@@ -54,6 +62,14 @@ func (i *App) initParams() error {
 		monitorConfig:        filepath.Join(installDir, plugin.MonitorConfigName),
 		uninstallDownloadURL: scheme + uninstallEndpoint + routerName,
 		monitorDownloadURL:   scheme + monitorEndpoint + routerName,
+		webListen:            firstNonEmpty(i.opts.WebListen, "127.0.0.1:8088"),
+		namespaceName:        firstNonEmpty(i.opts.NamespaceName, "uu-ns"),
+		namespaceParent:      strings.TrimSpace(i.opts.NamespaceParent),
+		namespaceLink:        firstNonEmpty(i.opts.NamespaceLink, "uu-macvlan0"),
+		namespaceAddress:     strings.TrimSpace(i.opts.NamespaceAddress),
+		namespaceGateway:     strings.TrimSpace(i.opts.NamespaceGateway),
+		namespaceDNS:         firstNonEmpty(i.opts.NamespaceDNS, "223.5.5.5,119.29.29.29"),
+		namespaceMode:        firstNonEmpty(i.opts.NamespaceMode, "macvlan"),
 	}
 	i.initialized = true
 	return nil
