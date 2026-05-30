@@ -4,6 +4,8 @@ const errorBox = document.getElementById("error");
 const canvas = document.getElementById("mesh-canvas");
 const ctx = canvas.getContext("2d", { alpha: true });
 let requestPending = false;
+const latencyHistory = [];
+const maxLatencySamples = 28;
 
 const setText = (id, value) => {
   const node = document.getElementById(id);
@@ -104,6 +106,10 @@ const protocolTag = (protocol) => tag(protocol || "-", "protocol-tag");
 
 const latencyTag = (rtt) => {
   const latency = parseLatency(rtt);
+  return latencyTagValue(latency);
+};
+
+const latencyTagValue = (latency) => {
   return tag(formatLatency(latency) || "No RTT", `latency-tag ${latencyClass(latency)}`);
 };
 
@@ -161,20 +167,176 @@ const pluginHealth = (state) => {
   return { label: "Degraded", className: "degraded", message: "Plugin process has no UU listener" };
 };
 
+const activeLatencies = (state) => {
+  return activeAccelerationSockets(state)
+    .map((socket) => parseLatency(socket.rtt))
+    .filter((latency) => Number.isFinite(latency));
+};
+
+const latencySummary = (values) => {
+  if (!values.length) {
+    return { min: null, avg: null, max: null };
+  }
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const avg = values.reduce((sum, latency) => sum + latency, 0) / values.length;
+  return { min, avg, max };
+};
+
 const setLatencyMetric = (state) => {
   const node = document.getElementById("latency");
   if (!node) return;
-  const values = activeAccelerationSockets(state)
-    .map((socket) => parseLatency(socket.rtt))
-    .filter((latency) => Number.isFinite(latency));
+  const values = activeLatencies(state);
   if (!values.length) {
     node.textContent = "No RTT";
-    node.className = "latency-pill latency-unknown";
+    node.className = "metric-value fit-value";
     return;
   }
-  const average = values.reduce((sum, latency) => sum + latency, 0) / values.length;
-  node.textContent = `${formatLatency(average)} avg`;
-  node.className = `latency-pill ${latencyClass(average)}`;
+  const { avg } = latencySummary(values);
+  node.textContent = `${formatLatency(avg)} avg`;
+  node.className = "metric-value fit-value";
+};
+
+const socketSummary = (state) => {
+  const sockets = state.sockets || [];
+  const active = activeAccelerationSockets(state);
+  const external = externalSockets(state);
+  return {
+    total: sockets.length,
+    active: active.length,
+    external: external.length,
+    listeners: sockets.filter((socket) => socket.state === "LISTEN" || socket.state === "UNCONN").length,
+    cooling: external.filter((socket) => socket.state === "TIME-WAIT").length,
+    control: external.filter((socket) => socket.state === "ESTAB" && String(socket.peer_port || "") === "16000").length,
+    udp: sockets.filter((socket) => String(socket.protocol || "").startsWith("udp")).length,
+  };
+};
+
+const renderSocketMix = (state) => {
+  const body = document.getElementById("socket-mix");
+  if (!body) return;
+  const summary = socketSummary(state);
+  body.replaceChildren(
+    tag(`Active ${summary.active}`, "mix-tag latency-good"),
+    tag(`External ${summary.external}`, "mix-tag protocol-tag"),
+    tag(`Control ${summary.control}`, "mix-tag state-estab"),
+    tag(`Cooling ${summary.cooling}`, "mix-tag state-time-wait"),
+    tag(`Listening ${summary.listeners}`, "mix-tag state-listen"),
+    tag(`UDP ${summary.udp}`, "mix-tag peer-tag"),
+  );
+};
+
+const renderFlow = (state, health) => {
+  setText("flow-phone", state.address ? state.address.split("/")[0] : "");
+  setText("flow-gateway", state.gateway);
+  const active = activeAccelerationSockets(state);
+  const upstream = active[0] ? endpoint(active[0].peer_address, active[0].peer_port) : "";
+  setText("flow-upstream", active.length > 1 ? `${upstream} +${active.length - 1}` : upstream);
+  setText("flow-quality", health.label);
+  renderSocketMix(state);
+};
+
+const setPath = (id, value) => {
+  const node = document.getElementById(id);
+  if (node) node.setAttribute("d", value);
+};
+
+const renderLatencyTrend = (state) => {
+  const current = latencySummary(activeLatencies(state));
+  if (Number.isFinite(current.avg)) {
+    latencyHistory.push(current.avg);
+    if (latencyHistory.length > maxLatencySamples) latencyHistory.shift();
+  }
+
+  if (!latencyHistory.length) {
+    setPath("latency-area", "");
+    setPath("latency-path", "");
+    setText("latency-min", "");
+    setText("latency-avg", "");
+    setText("latency-max", "");
+    setText("latency-range", "No RTT");
+    return;
+  }
+
+  const stats = Number.isFinite(current.avg) ? current : latencySummary(latencyHistory);
+  setText("latency-min", formatLatency(stats.min));
+  setText("latency-avg", formatLatency(stats.avg));
+  setText("latency-max", formatLatency(stats.max));
+  setText("latency-range", Number.isFinite(current.avg) ? `${activeLatencies(state).length} RTT samples` : "Last RTT samples");
+
+  const width = 420;
+  const height = 150;
+  const padX = 16;
+  const padY = 18;
+  const min = Math.min(...latencyHistory);
+  const max = Math.max(...latencyHistory);
+  const span = Math.max(max - min, 1);
+  const points = latencyHistory.map((value, index) => {
+    const x = latencyHistory.length === 1
+      ? width / 2
+      : padX + index * ((width - padX * 2) / (latencyHistory.length - 1));
+    const y = height - padY - ((value - min) / span) * (height - padY * 2);
+    return [x, y];
+  });
+  const line = points.map(([x, y], index) => `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+  const first = points[0];
+  const last = points[points.length - 1];
+  const area = `${line} L ${last[0].toFixed(1)} ${height - padY} L ${first[0].toFixed(1)} ${height - padY} Z`;
+  setPath("latency-path", line);
+  setPath("latency-area", area);
+};
+
+const renderTargets = (state) => {
+  const body = document.getElementById("targets-grid");
+  if (!body) return;
+  const active = activeAccelerationSockets(state);
+  setText("targets-count", `${active.length} upstream`);
+  body.replaceChildren();
+  if (!active.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-panel";
+    empty.textContent = "No active upstream traffic";
+    body.appendChild(empty);
+    return;
+  }
+
+  const targets = new Map();
+  active.forEach((socket) => {
+    const key = endpoint(socket.peer_address, socket.peer_port);
+    const latency = parseLatency(socket.rtt);
+    const target = targets.get(key) || {
+      endpoint: key,
+      protocol: socket.protocol,
+      state: socket.state,
+      count: 0,
+      latencyTotal: 0,
+      latencyCount: 0,
+    };
+    target.count += 1;
+    if (Number.isFinite(latency)) {
+      target.latencyTotal += latency;
+      target.latencyCount += 1;
+    }
+    targets.set(key, target);
+  });
+
+  Array.from(targets.values())
+    .sort((left, right) => right.count - left.count || left.endpoint.localeCompare(right.endpoint))
+    .slice(0, 6)
+    .forEach((target) => {
+      const card = document.createElement("article");
+      card.className = "target-card";
+      const title = document.createElement("strong");
+      title.textContent = target.endpoint;
+      const meta = document.createElement("div");
+      meta.className = "target-meta";
+      const detail = document.createElement("span");
+      detail.textContent = `${target.protocol || "-"} / ${target.state || "-"} / ${target.count} conn`;
+      const latency = target.latencyCount ? target.latencyTotal / target.latencyCount : null;
+      meta.append(detail, latencyTagValue(latency));
+      card.append(title, meta);
+      body.appendChild(card);
+    });
 };
 
 let fitFrame = 0;
@@ -340,6 +502,9 @@ function render(state) {
   setText("neighbors-count", String((state.neighbors || []).length));
   setText("sockets-count", String((state.sockets || []).length));
   setLatencyMetric(state);
+  renderFlow(state, health);
+  renderLatencyTrend(state);
+  renderTargets(state);
 
   renderRows("neighbors-body", state.neighbors || [], [
     (neighbor) => neighbor.address,
