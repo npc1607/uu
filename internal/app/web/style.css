@@ -132,11 +132,6 @@ dd {
   border-top: 1px solid #e2e7eb;
 }
 
-.observed-at {
-  color: #71808d;
-  font-size: 12px;
-}
-
 .table-wrap {
   overflow-x: auto;
 }

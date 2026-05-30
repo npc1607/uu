@@ -42,24 +42,24 @@ function render(state) {
   setText("namespace-name", state.name);
   setText("parent", state.parent);
   setText("address", state.address ? state.address.split("/")[0] : "");
+  setText("link", state.link);
   setText("gateway", state.gateway);
   setText("dns", state.dns ? state.dns.join(", ") : "");
   setText("mode", state.mode);
+  setText("namespace-pids", state.namespace_pids ? state.namespace_pids.join(", ") : "");
   setText("plugin-pids", state.plugin_pids ? state.plugin_pids.join(", ") : "");
   setText("monitor-pids", state.monitor_pids ? state.monitor_pids.join(", ") : "");
   setText("install-dir", state.install_dir);
   setText("runtime-dir", state.runtime_dir);
   setText("plugin-log-file", state.plugin_log_file);
+  setText("monitor-config", state.monitor_config);
   setText("log-file", state.log_file);
-  setText("observed-at", state.observed_at ? new Date(state.observed_at).toLocaleTimeString() : "");
+  setText("observed-at", state.observed_at ? new Date(state.observed_at).toLocaleString() : "");
 
-  renderRows("clients-body", state.clients || [], [
-    (client) => client.address,
-    (client) => client.mac,
-    (client) => client.last_seen,
-    (client) => client.source,
-    (client) => client.evidence,
-    (client) => String(client.connections || 0),
+  renderRows("neighbors-body", state.neighbors || [], [
+    (neighbor) => neighbor.address,
+    (neighbor) => neighbor.mac,
+    (neighbor) => neighbor.state,
   ]);
   renderRows("sockets-body", state.sockets || [], [
     (socket) => socket.protocol,

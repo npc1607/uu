@@ -27,20 +27,23 @@
       <dl class="details">
         <dt>Parent interface</dt><dd id="parent">-</dd>
         <dt>Phone target IP</dt><dd id="address">-</dd>
+        <dt>Namespace link</dt><dd id="link">-</dd>
         <dt>Gateway</dt><dd id="gateway">-</dd>
         <dt>DNS</dt><dd id="dns">-</dd>
         <dt>Link mode</dt><dd id="mode">-</dd>
+        <dt>Namespace PID</dt><dd id="namespace-pids">-</dd>
         <dt>UU plugin PID</dt><dd id="plugin-pids">-</dd>
         <dt>Monitor PID</dt><dd id="monitor-pids">-</dd>
         <dt>Install directory</dt><dd id="install-dir">-</dd>
         <dt>Runtime directory</dt><dd id="runtime-dir">-</dd>
         <dt>Plugin log file</dt><dd id="plugin-log-file">-</dd>
+        <dt>Monitor config</dt><dd id="monitor-config">-</dd>
         <dt>Log file</dt><dd id="log-file">-</dd>
+        <dt>Last observation</dt><dd id="observed-at">-</dd>
       </dl>
 
       <div class="section-heading">
-        <h2>Log-observed LAN clients</h2>
-        <span class="observed-at" id="observed-at">-</span>
+        <h2>Namespace neighbors</h2>
       </div>
       <div class="table-wrap">
         <table>
@@ -48,13 +51,10 @@
             <tr>
               <th>Address</th>
               <th>MAC</th>
-              <th>Last seen</th>
-              <th>Source</th>
-              <th>Evidence</th>
-              <th>Events</th>
+              <th>State</th>
             </tr>
           </thead>
-          <tbody id="clients-body"></tbody>
+          <tbody id="neighbors-body"></tbody>
         </table>
       </div>
 

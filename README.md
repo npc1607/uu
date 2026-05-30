@@ -9,7 +9,7 @@ Compared with the original `uu.sh` installer, this Go version keeps the same def
 - Persistent Steam Deck identity: `.uuplugin_uuid` and `.uid` are saved in the install directory and restored to `/tmp/uu`, so reinstalling, upgrading, or cleaning up the runtime directory does not create a new plugin identity.
 - Reusable CLI commands: install, start, stop, status, and logs are available without rerunning the full shell installer flow.
 - Isolated namespace mode: the official `uuplugin` can be started inside a dedicated `uu-ns` network namespace with its own macvlan link, DNS, and routing so it does not share the host network stack.
-- Local control page: `serve` starts an embedded loopback-only HTML/CSS/JS control surface for namespace start, stop, restart, status, log-observed LAN clients, and namespace sockets.
+- Local control page: `serve` starts an embedded loopback-only HTML/CSS/JS control surface for namespace start, stop, restart, status, neighbor cache, and namespace sockets.
 - Clearer diagnostics: install logs, resolved paths, systemd state, monitor state, and `uuplugin` process state are easier to inspect.
 - Configurable install options: router, model, install directory, log directory, and log-following behavior can be set with flags or YAML.
 
@@ -139,7 +139,7 @@ sudo ./bin/uu serve \
 ```
 
 Open `http://127.0.0.1:8088/`. The control server refuses non-loopback bind addresses.
-When a phone connects to the isolated UU IP, the page shows LAN client entries parsed from the captured `uuplugin` log and current TCP/UDP socket state from `ss`. The patched Steam Deck monitor writes the official plugin output to `/tmp/uu/uuplugin.log`.
+When a phone connects to the isolated UU IP, the page shows the namespace neighbor cache from `ip neigh` and current TCP/UDP socket state from `ss`. The patched Steam Deck monitor writes the official plugin output to `/tmp/uu/uuplugin.log`.
 
 The web files are real HTML/CSS/JS assets under `internal/app/web/` and are embedded into the `uu` binary at build time.
 
