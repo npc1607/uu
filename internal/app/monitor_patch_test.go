@@ -7,6 +7,44 @@ import (
 	"testing"
 )
 
+func TestPatchMonitorRuntimeDir(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "uuplugin_monitor.sh")
+	script := `#!/bin/sh
+BASEDIR="$(cd "$(dirname "$0")"; pwd -P)"
+RUNNING_DIR="/tmp/uu"
+`
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := patchMonitorRuntimeDir(path); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patched := string(content)
+	if strings.Contains(patched, `RUNNING_DIR="/tmp/uu"`) {
+		t.Fatalf("runtime dir still points at /tmp/uu:\n%s", patched)
+	}
+	if !strings.Contains(patched, `RUNNING_DIR="${BASEDIR}/runtime"`) {
+		t.Fatalf("runtime dir was not patched:\n%s", patched)
+	}
+
+	if err := patchMonitorRuntimeDir(path); err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(second) != patched {
+		t.Fatal("runtime dir patch is not idempotent")
+	}
+}
+
 func TestPatchMonitorIdentityPersistence(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "uuplugin_monitor.sh")

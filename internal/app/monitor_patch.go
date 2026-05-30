@@ -13,8 +13,9 @@ import (
 const (
 	steamDeckIdentityPatchMarker  = "# uu-go: persist Steam Deck identity in install dir"
 	steamDeckPluginLogPatchMarker = "# uu-go: capture uuplugin stdout/stderr"
-	steamDeckRuntimeDir           = "/tmp/uu"
-	steamDeckPluginLogFile        = steamDeckRuntimeDir + "/uuplugin.log"
+	steamDeckLegacyRuntimeDir     = "/tmp/uu"
+	steamDeckRuntimeDirName       = "runtime"
+	steamDeckPluginLogName        = "uuplugin.log"
 )
 
 var steamDeckIdentityFiles = []string{".uuplugin_uuid", ".uid"}
@@ -23,10 +24,40 @@ func (i *App) patchSteamDeckMonitorIdentity() error {
 	if i.params.router != router.SteamDeck {
 		return nil
 	}
+	if err := patchMonitorRuntimeDir(i.params.monitorFile); err != nil {
+		return err
+	}
 	if err := patchMonitorIdentityPersistence(i.params.monitorFile); err != nil {
 		return err
 	}
 	return patchMonitorPluginLogging(i.params.monitorFile)
+}
+
+func (i *App) steamDeckRuntimeDir() string {
+	return filepath.Join(i.params.installDir, steamDeckRuntimeDirName)
+}
+
+func (i *App) steamDeckPluginLogFile() string {
+	return filepath.Join(i.steamDeckRuntimeDir(), steamDeckPluginLogName)
+}
+
+func patchMonitorRuntimeDir(path string) error {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	const oldLine = `RUNNING_DIR="/tmp/uu"`
+	const newLine = `RUNNING_DIR="${BASEDIR}/runtime"`
+	script := string(content)
+	if strings.Contains(script, newLine) {
+		return nil
+	}
+	if !strings.Contains(script, oldLine) {
+		return fmt.Errorf("monitor script does not contain runtime dir anchor")
+	}
+	script = strings.Replace(script, oldLine, newLine, 1)
+	return os.WriteFile(path, []byte(script), fileModeOrDefault(path, 0o755))
 }
 
 func patchMonitorIdentityPersistence(path string) error {
@@ -131,7 +162,7 @@ func (i *App) persistSteamDeckRuntimeIdentity() error {
 	if i.params.router != router.SteamDeck {
 		return nil
 	}
-	return copyIdentityFiles(steamDeckRuntimeDir, i.params.installDir)
+	return copyIdentityFiles(i.steamDeckRuntimeDir(), i.params.installDir)
 }
 
 func copyIdentityFiles(srcDir string, dstDir string) error {

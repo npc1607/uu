@@ -17,6 +17,43 @@ const endpoint = (address, port) => {
   return `${host}:${port || "*"}`;
 };
 
+const pluginHealth = (state) => {
+  const running = Boolean(state.exists && state.plugin_pids && state.plugin_pids.length);
+  if (!running) {
+    return { label: "Stopped", className: "stopped", message: "Namespace is idle" };
+  }
+  if (state.observation_error) {
+    return { label: "Degraded", className: "degraded", message: "Status inspection failed" };
+  }
+
+  const phoneIP = state.address ? state.address.split("/")[0] : "";
+  const sockets = state.sockets || [];
+  const neighbors = state.neighbors || [];
+  const clientNeighbors = neighbors.filter((neighbor) => {
+    return neighbor.address && neighbor.address !== state.gateway && neighbor.address !== phoneIP;
+  });
+  const hasLANPeer = sockets.some((socket) => socket.lan_peer);
+  const hasClient = hasLANPeer || clientNeighbors.length > 0;
+  if (hasClient) {
+    return { label: "Active", className: "running", message: "Phone client detected" };
+  }
+
+  const hasUUListener = sockets.some((socket) => {
+    const port = String(socket.local_port || "");
+    return (port === "16363" || port === "14554") && (socket.state === "LISTEN" || socket.state === "UNCONN");
+  });
+  const hasUpstream = sockets.some((socket) => {
+    return socket.state === "ESTAB" && socket.local_address === phoneIP && socket.peer_address !== state.gateway;
+  });
+  if (hasUUListener && hasUpstream) {
+    return { label: "No Phone", className: "waiting", message: "Plugin online, no phone client seen" };
+  }
+  if (hasUUListener) {
+    return { label: "Ready", className: "waiting", message: "Plugin listening, waiting for phone" };
+  }
+  return { label: "Degraded", className: "degraded", message: "Plugin process has no UU listener" };
+};
+
 let fitFrame = 0;
 
 const fitValue = (node) => {
@@ -153,7 +190,7 @@ function drawMesh() {
 }
 
 function render(state) {
-  const running = Boolean(state.exists && state.plugin_pids && state.plugin_pids.length);
+  const health = pluginHealth(state);
   setText("namespace-name", state.name);
   setText("parent", state.parent);
   setText("address", state.address ? state.address.split("/")[0] : "");
@@ -171,7 +208,7 @@ function render(state) {
   setText("monitor-config", state.monitor_config);
   setText("log-file", state.log_file);
   setText("observed-at", state.observed_at ? new Date(state.observed_at).toLocaleString() : "-");
-  setText("running-signal", running ? "Namespace is live" : "Namespace is idle");
+  setText("running-signal", health.message);
   setText("neighbors-count", String((state.neighbors || []).length));
   setText("sockets-count", String((state.sockets || []).length));
 
@@ -192,8 +229,8 @@ function render(state) {
   errorBox.textContent = state.observation_error || "";
   errorBox.hidden = !state.observation_error;
   const badge = document.getElementById("status-badge");
-  badge.textContent = running ? "Running" : "Stopped";
-  badge.className = `badge ${running ? "running" : "stopped"}`;
+  badge.textContent = health.label;
+  badge.className = `badge ${health.className}`;
   fitValues();
 }
 

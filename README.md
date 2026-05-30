@@ -4,9 +4,9 @@ Go rewrite of `uu.sh`.
 
 ## Why This Version
 
-Compared with the original `uu.sh` installer, this Go version keeps the same default Steam Deck install behavior while adding a few practical improvements:
+Compared with the original `uu.sh` installer, this Go version keeps the Steam Deck install flow compatible while adding a few practical improvements:
 
-- Persistent Steam Deck identity: `.uuplugin_uuid` and `.uid` are saved in the install directory and restored to `/tmp/uu`, so reinstalling, upgrading, or cleaning up the runtime directory does not create a new plugin identity.
+- Persistent Steam Deck identity: `.uuplugin_uuid` and `.uid` are saved in the install directory and restored to the local `runtime/` directory next to the `uu` binary, so reinstalling, upgrading, or cleaning up runtime files does not create a new plugin identity.
 - Reusable CLI commands: install, start, stop, status, and logs are available without rerunning the full shell installer flow.
 - Isolated namespace mode: the official `uuplugin` can be started inside a dedicated `uu-ns` network namespace with its own macvlan link, DNS, and routing so it does not share the host network stack.
 - Local control page: `serve` starts an embedded loopback-only HTML/CSS/JS dashboard with namespace start, stop, restart, status, neighbor cache, and namespace sockets.
@@ -70,12 +70,13 @@ sudo ./bin/uu ns-status \
   --namespace-gateway 192.168.1.1
 ```
 
-Stop or disable namespace autostart:
+Uninstall namespace autostart and clean generated runtime files:
 
 ```sh
-sudo systemctl stop uuplugin-ns
-sudo systemctl disable uuplugin-ns
+sudo ./bin/uu ns-uninstall
 ```
+
+`ns-uninstall` checks whether `uuplugin-ns` is running before it removes anything. If the service is active, it stops it first, then disables and removes `/etc/systemd/system/uuplugin-ns.service`, removes the namespace/link/DNS files, and deletes the generated monitor/config/runtime files next to the `uu` binary.
 
 ### Ordinary Host-Network Install
 
@@ -139,7 +140,7 @@ sudo ./bin/uu serve \
 ```
 
 Open `http://127.0.0.1:8088/`. The control server refuses non-loopback bind addresses.
-When a phone connects to the isolated UU IP, the page shows the namespace neighbor cache from `ip neigh` and current TCP/UDP socket state from `ss`. The patched Steam Deck monitor writes the official plugin output to `/tmp/uu/uuplugin.log`.
+When a phone connects to the isolated UU IP, the page shows the namespace neighbor cache from `ip neigh` and current TCP/UDP socket state from `ss`. The patched Steam Deck monitor writes the official plugin output to `<install_dir>/runtime/uuplugin.log`.
 
 The web files are real HTML/CSS/JS assets under `internal/app/web/` and are embedded into the `uu` binary at build time.
 
@@ -313,6 +314,7 @@ sudo ./bin/uu status      # print ordinary service/process status
 sudo ./bin/uu logs        # follow the configured log file
 
 sudo ./bin/uu ns-install  # install namespace + web autostart
+sudo ./bin/uu ns-uninstall # uninstall namespace autostart and generated files
 sudo ./bin/uu ns-start    # start namespace once
 sudo ./bin/uu ns-stop     # stop namespace and remove its link
 sudo ./bin/uu ns-status   # print namespace state

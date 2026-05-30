@@ -50,3 +50,16 @@ func TestSystemdQuoteArg(t *testing.T) {
 		t.Fatalf("systemdExecLine = %q, want %q", got, want)
 	}
 }
+
+func TestNamespaceServiceRunningState(t *testing.T) {
+	for _, state := range []string{"active", "activating", "deactivating", "reloading"} {
+		if !namespaceServiceRunningState(state) {
+			t.Fatalf("namespaceServiceRunningState(%q) = false, want true", state)
+		}
+	}
+	for _, state := range []string{"inactive", "failed", "maintenance", "unknown", "stopped"} {
+		if namespaceServiceRunningState(state) {
+			t.Fatalf("namespaceServiceRunningState(%q) = true, want false", state)
+		}
+	}
+}

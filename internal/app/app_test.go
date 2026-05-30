@@ -26,6 +26,9 @@ func TestSteamDeckDefaultInstallDirUsesBinaryDir(t *testing.T) {
 	if app.params.installDir != want {
 		t.Fatalf("installDir = %q, want %q", app.params.installDir, want)
 	}
+	if runtimeDir := app.steamDeckRuntimeDir(); runtimeDir != filepath.Join(want, steamDeckRuntimeDirName) {
+		t.Fatalf("runtimeDir = %q, want runtime under %q", runtimeDir, want)
+	}
 	if filepath.Dir(app.params.uninstallFile) != logDir {
 		t.Fatalf("uninstallFile = %q, want temp file under %q", app.params.uninstallFile, logDir)
 	}

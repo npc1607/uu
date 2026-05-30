@@ -35,6 +35,8 @@ func main() {
 		os.Exit(application.Logs())
 	case "ns-install":
 		os.Exit(application.NamespaceInstall())
+	case "ns-uninstall":
+		os.Exit(application.NamespaceUninstall())
 	case "ns-start":
 		os.Exit(application.NamespaceStart())
 	case "ns-stop":
@@ -70,7 +72,7 @@ func parseCommandOptions(args []string) (string, config.Options, error) {
 	fs := flag.NewFlagSet("uu", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	fs.Usage = func() {
-		fmt.Fprintf(fs.Output(), "Usage: uu [install|start|stop|status|logs|ns-install|ns-start|ns-stop|ns-status|ns-serve|serve] [flags]\n\n")
+		fmt.Fprintf(fs.Output(), "Usage: uu [install|start|stop|status|logs|ns-install|ns-uninstall|ns-start|ns-stop|ns-status|ns-serve|serve] [flags]\n\n")
 		fmt.Fprintf(fs.Output(), "Commands:\n")
 		fmt.Fprintf(fs.Output(), "  install  install or reinstall the plugin\n")
 		fmt.Fprintf(fs.Output(), "  start    start the installed plugin service/monitor\n")
@@ -78,6 +80,7 @@ func parseCommandOptions(args []string) (string, config.Options, error) {
 		fmt.Fprintf(fs.Output(), "  status   print plugin process status\n")
 		fmt.Fprintf(fs.Output(), "  logs     follow the configured log file\n\n")
 		fmt.Fprintf(fs.Output(), "  ns-install  install and enable isolated namespace + web autostart\n")
+		fmt.Fprintf(fs.Output(), "  ns-uninstall  stop, disable, and remove isolated namespace autostart\n")
 		fmt.Fprintf(fs.Output(), "  ns-start    start official uuplugin inside an isolated network namespace\n")
 		fmt.Fprintf(fs.Output(), "  ns-stop     stop and remove the isolated network namespace\n")
 		fmt.Fprintf(fs.Output(), "  ns-status   print isolated namespace status\n")
@@ -177,7 +180,7 @@ func parseCommandOptions(args []string) (string, config.Options, error) {
 
 func isCommand(arg string) bool {
 	switch arg {
-	case "install", "start", "stop", "status", "logs", "ns-install", "ns-start", "ns-stop", "ns-status", "ns-serve", "serve":
+	case "install", "start", "stop", "status", "logs", "ns-install", "ns-uninstall", "ns-start", "ns-stop", "ns-status", "ns-serve", "serve":
 		return true
 	default:
 		return false

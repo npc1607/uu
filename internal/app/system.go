@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -189,6 +190,25 @@ func (i *App) NamespaceInstall() int {
 	return i.finishSuccessfulInstall()
 }
 
+func (i *App) NamespaceUninstall() int {
+	i.openLog(true)
+	defer i.closeLog()
+	if i.logPath != "" {
+		fmt.Fprintf(i.stdout, "Uninstall log: %s\n", i.logPath)
+	}
+	if err := i.initParams(); err != nil {
+		return i.failNamespaceUninstall(9, "init params failed: %v", err)
+	}
+	if os.Geteuid() != 0 {
+		return i.failNamespaceUninstall(1, "root privileges required to remove %s; rerun with sudo", namespaceServiceFile)
+	}
+	if err := i.namespaceUninstall(); err != nil {
+		return i.failNamespaceUninstall(1, "%v", err)
+	}
+	fmt.Fprintf(i.stdout, "Namespace uninstall succeeded! service=%s removed\n", namespaceServiceName)
+	return 0
+}
+
 func (i *App) failNamespaceInstall(code int, format string, args ...any) int {
 	msg := fmt.Sprintf(format, args...)
 	fmt.Fprintf(i.stderr, "Namespace installation failed: %s\n", msg)
@@ -197,6 +217,91 @@ func (i *App) failNamespaceInstall(code int, format string, args ...any) int {
 	}
 	i.logf("namespace installation failed: %s", msg)
 	return code
+}
+
+func (i *App) failNamespaceUninstall(code int, format string, args ...any) int {
+	msg := fmt.Sprintf(format, args...)
+	fmt.Fprintf(i.stderr, "Namespace uninstall failed: %s\n", msg)
+	if i.logPath != "" {
+		fmt.Fprintf(i.stderr, "Uninstall log: %s\n", i.logPath)
+	}
+	i.logf("namespace uninstall failed: %s", msg)
+	return code
+}
+
+func (i *App) namespaceUninstall() error {
+	if _, err := exec.LookPath("systemctl"); err == nil {
+		state, stateErr := systemdState(namespaceServiceName)
+		if stateErr != nil {
+			i.logf("inspect %s state warning: %v", namespaceServiceName, stateErr)
+			fmt.Fprintf(i.stdout, "service=%s state=unknown\n", namespaceServiceName)
+		} else {
+			fmt.Fprintf(i.stdout, "service=%s state=%s\n", namespaceServiceName, state)
+			if namespaceServiceRunningState(state) {
+				fmt.Fprintf(i.stdout, "stopping service=%s\n", namespaceServiceName)
+				if err := i.runCommand("systemctl", "stop", namespaceServiceName); err != nil {
+					return fmt.Errorf("stop %s failed: %w", namespaceServiceName, err)
+				}
+			} else {
+				fmt.Fprintf(i.stdout, "service=%s running=false\n", namespaceServiceName)
+			}
+		}
+		if err := i.runSilent("systemctl", "disable", namespaceServiceName); err != nil {
+			i.logf("disable %s warning: %v", namespaceServiceName, err)
+		}
+	} else {
+		i.logf("systemctl not found; skipping %s service stop/disable", namespaceServiceName)
+	}
+
+	cfg := namespaceConfig{
+		Name: firstNonEmpty(i.params.namespaceName, "uu-ns"),
+		Link: firstNonEmpty(i.params.namespaceLink, "uu-macvlan0"),
+	}
+	if err := validateNamespaceName(cfg.Name); err != nil {
+		return err
+	}
+	if err := validateInterfaceName(cfg.Link); err != nil {
+		return err
+	}
+	if err := i.namespaceStopConfig(cfg); err != nil {
+		return err
+	}
+	i.cleanupStalePluginPIDFile()
+
+	for _, path := range i.namespaceInstallArtifacts() {
+		if err := os.RemoveAll(path); err != nil {
+			return fmt.Errorf("remove %s failed: %w", path, err)
+		}
+		i.logf("removed %s", path)
+	}
+
+	if _, err := exec.LookPath("systemctl"); err == nil {
+		if err := i.runCommand("systemctl", "daemon-reload"); err != nil {
+			return fmt.Errorf("systemctl daemon-reload failed: %w", err)
+		}
+		_ = i.runSilent("systemctl", "reset-failed", namespaceServiceName)
+	}
+	return nil
+}
+
+func (i *App) namespaceInstallArtifacts() []string {
+	return []string{
+		namespaceServiceFile,
+		i.params.monitorFile,
+		i.params.monitorConfig,
+		filepath.Join(i.params.installDir, plugin.UninstallFilename),
+		i.steamDeckRuntimeDir(),
+		steamDeckLegacyRuntimeDir,
+	}
+}
+
+func namespaceServiceRunningState(state string) bool {
+	switch state {
+	case "active", "activating", "deactivating", "reloading":
+		return true
+	default:
+		return false
+	}
 }
 
 func (i *App) configNamespaceSystemd(cfg namespaceConfig) error {

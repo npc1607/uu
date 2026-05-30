@@ -329,6 +329,18 @@ h2 {
   color: #075985;
 }
 
+.badge.waiting {
+  border-color: rgba(124, 58, 237, .28);
+  background: linear-gradient(135deg, rgba(124, 58, 237, .10), rgba(37, 99, 235, .10));
+  color: #5b21b6;
+}
+
+.badge.degraded {
+  border-color: rgba(217, 119, 6, .28);
+  background: #fff8ed;
+  color: #92400e;
+}
+
 .badge.stopped {
   border-color: rgba(220, 38, 38, .26);
   background: #fff1f4;

@@ -43,3 +43,19 @@ func TestParseCommandOptionsNamespaceInstall(t *testing.T) {
 		t.Fatalf("NamespaceParent = %q", opts.NamespaceParent)
 	}
 }
+
+func TestParseCommandOptionsNamespaceUninstall(t *testing.T) {
+	command, opts, err := parseCommandOptions([]string{"ns-uninstall", "--namespace-name", "uu-test", "--namespace-link", "uu-test0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if command != "ns-uninstall" {
+		t.Fatalf("command = %q, want ns-uninstall", command)
+	}
+	if opts.NamespaceName != "uu-test" {
+		t.Fatalf("NamespaceName = %q", opts.NamespaceName)
+	}
+	if opts.NamespaceLink != "uu-test0" {
+		t.Fatalf("NamespaceLink = %q", opts.NamespaceLink)
+	}
+}

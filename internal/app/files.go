@@ -50,9 +50,9 @@ systemctl stop uuplugin-ns >/dev/null 2>&1 || true
 rm -f /etc/systemd/system/uuplugin.service
 rm -f /etc/systemd/system/uuplugin-ns.service
 systemctl daemon-reload >/dev/null 2>&1 || true
-rm -rf /tmp/uu
+rm -rf "${INSTALL_DIR}/%s" /tmp/uu
 rm -f "${INSTALL_DIR}/%s" "${INSTALL_DIR}/%s" "${INSTALL_DIR}/%s"
-`, plugin.MonitorFilename, plugin.MonitorConfigName, plugin.UninstallFilename)
+`, steamDeckRuntimeDirName, plugin.MonitorFilename, plugin.MonitorConfigName, plugin.UninstallFilename)
 	return os.WriteFile(dst, []byte(content), 0o755)
 }
 
@@ -72,7 +72,8 @@ func (i *App) cleanUp() error {
 func (i *App) cleanUpSteamDeck() error {
 	serviceFile := "/etc/systemd/system/uuplugin.service"
 	uninstallFile := filepath.Join(i.params.installDir, plugin.UninstallFilename)
-	i.logf("cleanup targets: monitor=%s config=%s uninstall=%s runtime=/tmp/uu service=%s", i.params.monitorFile, i.params.monitorConfig, uninstallFile, serviceFile)
+	runtimeDir := i.steamDeckRuntimeDir()
+	i.logf("cleanup targets: monitor=%s config=%s uninstall=%s runtime=%s service=%s", i.params.monitorFile, i.params.monitorConfig, uninstallFile, runtimeDir, serviceFile)
 
 	if err := i.persistSteamDeckRuntimeIdentity(); err != nil {
 		i.logf("persist identity before cleanup failed: %v", err)
@@ -97,8 +98,10 @@ func (i *App) cleanUpSteamDeck() error {
 			i.logf("removed %s", path)
 		}
 	}
-	if err := os.RemoveAll("/tmp/uu"); err != nil {
-		i.logf("remove /tmp/uu failed: %v", err)
+	for _, path := range []string{runtimeDir, steamDeckLegacyRuntimeDir} {
+		if err := os.RemoveAll(path); err != nil {
+			i.logf("remove %s failed: %v", path, err)
+		}
 	}
 	if err := os.Remove(serviceFile); err != nil && !os.IsNotExist(err) {
 		i.logf("remove %s failed: %v", serviceFile, err)
