@@ -9,81 +9,135 @@
   <script src="/assets/app.js" defer></script>
 </head>
 <body>
-  <header class="topbar">
-    <h1>UU Namespace Control</h1>
-    <button type="button" data-action="refresh">Refresh</button>
-  </header>
+  <canvas id="mesh-canvas" aria-hidden="true"></canvas>
 
-  <main>
-    <section class="panel">
-      <div class="summary">
+  <div class="page-shell">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <span class="brand-mark" aria-hidden="true"></span>
         <div>
+          <p class="eyebrow">UU Namespace</p>
+          <h1>Control Surface</h1>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <div class="badge" id="status-badge">Loading</div>
+        <button type="button" class="icon-button" data-action="refresh" aria-label="Refresh">
+          <span class="icon refresh-icon" aria-hidden="true"></span>
+          <span>Refresh</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="dashboard">
+      <section class="hero-card">
+        <div class="hero-copy">
           <div class="label">Namespace</div>
           <div class="state" id="namespace-name">uu-ns</div>
+          <div class="hero-subline">
+            <span id="running-signal">Waiting for status</span>
+          </div>
         </div>
-        <div class="badge" id="status-badge">Loading</div>
-      </div>
+        <div class="metric-grid">
+          <div class="metric-card accent-cyan">
+            <span>Phone target</span>
+            <strong id="address" class="fit-value">-</strong>
+          </div>
+          <div class="metric-card accent-violet">
+            <span>Link mode</span>
+            <strong id="mode">-</strong>
+          </div>
+          <div class="metric-card accent-blue">
+            <span>Sockets</span>
+            <strong id="sockets-count">0</strong>
+          </div>
+          <div class="metric-card accent-pink">
+            <span>Neighbors</span>
+            <strong id="neighbors-count">0</strong>
+          </div>
+        </div>
+      </section>
 
-      <dl class="details">
-        <dt>Parent interface</dt><dd id="parent">-</dd>
-        <dt>Phone target IP</dt><dd id="address">-</dd>
-        <dt>Namespace link</dt><dd id="link">-</dd>
-        <dt>Gateway</dt><dd id="gateway">-</dd>
-        <dt>DNS</dt><dd id="dns">-</dd>
-        <dt>Link mode</dt><dd id="mode">-</dd>
-        <dt>Namespace PID</dt><dd id="namespace-pids">-</dd>
-        <dt>UU plugin PID</dt><dd id="plugin-pids">-</dd>
-        <dt>Monitor PID</dt><dd id="monitor-pids">-</dd>
-        <dt>Install directory</dt><dd id="install-dir">-</dd>
-        <dt>Runtime directory</dt><dd id="runtime-dir">-</dd>
-        <dt>Plugin log file</dt><dd id="plugin-log-file">-</dd>
-        <dt>Monitor config</dt><dd id="monitor-config">-</dd>
-        <dt>Log file</dt><dd id="log-file">-</dd>
-        <dt>Last observation</dt><dd id="observed-at">-</dd>
-      </dl>
+      <section class="details-card">
+        <div class="section-heading">
+          <h2>Runtime Matrix</h2>
+          <span class="section-kicker" id="observed-at">-</span>
+        </div>
+        <dl class="details">
+          <dt>Parent interface</dt><dd id="parent">-</dd>
+          <dt>Namespace link</dt><dd id="link">-</dd>
+          <dt>Gateway</dt><dd id="gateway">-</dd>
+          <dt>DNS</dt><dd id="dns">-</dd>
+          <dt>Web listener</dt><dd id="web-listen">-</dd>
+          <dt>Namespace PID</dt><dd id="namespace-pids">-</dd>
+          <dt>UU plugin PID</dt><dd id="plugin-pids">-</dd>
+          <dt>Monitor PID</dt><dd id="monitor-pids">-</dd>
+          <dt>Install directory</dt><dd id="install-dir">-</dd>
+          <dt>Runtime directory</dt><dd id="runtime-dir">-</dd>
+          <dt>Plugin log file</dt><dd id="plugin-log-file">-</dd>
+          <dt>Monitor config</dt><dd id="monitor-config">-</dd>
+          <dt>Log file</dt><dd id="log-file">-</dd>
+        </dl>
+      </section>
 
-      <div class="section-heading">
-        <h2>Namespace neighbors</h2>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Address</th>
-              <th>MAC</th>
-              <th>State</th>
-            </tr>
-          </thead>
-          <tbody id="neighbors-body"></tbody>
-        </table>
-      </div>
+      <section class="data-card">
+        <div class="section-heading">
+          <h2>Namespace Neighbors</h2>
+          <span class="section-kicker">ip neigh</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Address</th>
+                <th>MAC</th>
+                <th>State</th>
+              </tr>
+            </thead>
+            <tbody id="neighbors-body"></tbody>
+          </table>
+        </div>
+      </section>
 
-      <div class="section-heading">
-        <h2>Namespace sockets</h2>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Protocol</th>
-              <th>State</th>
-              <th>Local endpoint</th>
-              <th>Peer endpoint</th>
-              <th>LAN peer</th>
-              <th>Process</th>
-            </tr>
-          </thead>
-          <tbody id="sockets-body"></tbody>
-        </table>
-      </div>
+      <section class="data-card wide">
+        <div class="section-heading">
+          <h2>Namespace Sockets</h2>
+          <span class="section-kicker">ss -tunap</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Protocol</th>
+                <th>State</th>
+                <th>Local endpoint</th>
+                <th>Peer endpoint</th>
+                <th>LAN peer</th>
+                <th>Process</th>
+              </tr>
+            </thead>
+            <tbody id="sockets-body"></tbody>
+          </table>
+        </div>
+      </section>
 
-      <div class="actions">
-        <button type="button" class="primary" data-action="start">Start</button>
-        <button type="button" class="danger" data-action="stop">Stop</button>
-        <button type="button" data-action="restart">Restart</button>
-      </div>
+      <section class="action-card">
+        <button type="button" class="primary" data-action="start">
+          <span class="icon play-icon" aria-hidden="true"></span>
+          <span>Start</span>
+        </button>
+        <button type="button" class="danger" data-action="stop">
+          <span class="icon stop-icon" aria-hidden="true"></span>
+          <span>Stop</span>
+        </button>
+        <button type="button" data-action="restart">
+          <span class="icon restart-icon" aria-hidden="true"></span>
+          <span>Restart</span>
+        </button>
+      </section>
+
       <pre class="error" id="error" hidden></pre>
-    </section>
-  </main>
+    </main>
+  </div>
 </body>
 </html>
