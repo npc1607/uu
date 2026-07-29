@@ -1,18 +1,16 @@
 package app
 
 import (
-	"crypto/tls"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
-	"sync"
+	"os/exec"
 	"time"
 
 	"github.com/npc1607/uu/internal/config"
 	"github.com/npc1607/uu/internal/downloader"
-	"github.com/npc1607/uu/internal/logtail"
 	"github.com/npc1607/uu/internal/plugin"
 	"github.com/npc1607/uu/internal/router"
 )
@@ -29,7 +27,6 @@ type App struct {
 	logger      *log.Logger
 	logWriter   io.Writer
 	initialized bool
-	mu          sync.Mutex
 }
 
 type Option func(*App)
@@ -55,19 +52,10 @@ func New(opts config.Options, options ...Option) *App {
 	if opts.LogDir == "" {
 		opts.LogDir = config.DefaultLogDir
 	}
-	if opts.FollowLogFile == "" {
-		opts.FollowLogFile = config.DefaultFollowLogFile
-	}
-	if opts.FollowLogLines < 0 {
-		opts.FollowLogLines = 0
-	}
 	if opts.BaseDir == "" {
 		opts.BaseDir = "."
 	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} // Match the original curl -k behavior.
-
-	client := &http.Client{Timeout: 60 * time.Second, Transport: transport}
+	client := &http.Client{Timeout: 60 * time.Second}
 	app := &App{
 		opts:       opts,
 		client:     client,
@@ -148,8 +136,8 @@ func (i *App) Install() (status int) {
 		if err := i.createUninstall(); err != nil {
 			return i.failInstall(6, "create uninstall script failed: %v", err)
 		}
-		fmt.Fprintln(i.stdout, "Installation succeeded!")
-		return i.finishSuccessfulInstall()
+		i.showSteamDeckBindingQRCode(time.Sleep)
+		return 0
 	}
 
 	if err := i.startMonitor(); err != nil {
@@ -167,7 +155,7 @@ func (i *App) Install() (status int) {
 	if err := i.printSN(); err != nil {
 		return i.failInstall(10, "print sn failed: %v", err)
 	}
-	return i.finishSuccessfulInstall()
+	return 0
 }
 
 func (i *App) failInstall(code int, format string, args ...any) int {
@@ -180,24 +168,42 @@ func (i *App) failInstall(code int, format string, args ...any) int {
 	return code
 }
 
-func (i *App) finishSuccessfulInstall() int {
-	if i.initialized && fileExists(i.params.uninstallFile) {
-		if err := os.Remove(i.params.uninstallFile); err != nil {
-			i.logf("remove temporary uninstall failed: %v", err)
+func (i *App) Uninstall() int {
+	i.openLog(true)
+	defer i.closeLog()
+
+	if err := i.initParams(); err != nil {
+		fmt.Fprintf(i.stderr, "uninstall failed: %v\n", err)
+		return 1
+	}
+	if i.params.router == router.SteamDeck && os.Geteuid() != 0 {
+		fmt.Fprintln(i.stderr, "uninstall failed: root privileges required; rerun with sudo")
+		return 1
+	}
+
+	if i.params.router != router.SteamDeck {
+		if err := i.downloader.Download(i.params.uninstallDownloadURL, i.params.uninstallFile); err != nil {
+			fmt.Fprintf(i.stderr, "uninstall failed: download uninstall script: %v\n", err)
+			return 1
+		}
+		defer os.Remove(i.params.uninstallFile)
+	}
+	if err := i.cleanUp(); err != nil {
+		fmt.Fprintf(i.stderr, "uninstall failed: %v\n", err)
+		return 1
+	}
+	if i.params.router == router.SteamDeck {
+		if _, err := exec.LookPath("systemctl"); err == nil {
+			if err := i.runCommand("systemctl", "daemon-reload"); err != nil {
+				fmt.Fprintf(i.stderr, "uninstall failed: reload systemd: %v\n", err)
+				return 1
+			}
+			_ = i.runSilent("systemctl", "reset-failed", "uuplugin")
+			_ = i.runSilent("systemctl", "reset-failed", legacyNamespaceServiceName)
 		}
 	}
-	if !i.opts.FollowLogs {
-		return 0
-	}
-	if err := logtail.Follow(logtail.Options{
-		File:    i.opts.FollowLogFile,
-		Lines:   i.opts.FollowLogLines,
-		Timeout: i.opts.FollowLogTimeout,
-		Writer:  i.stdout,
-	}); err != nil {
-		fmt.Fprintf(i.stderr, "follow log failed: %v\n", err)
-		i.logf("follow log failed: %v", err)
-	}
+
+	fmt.Fprintln(i.stdout, "Uninstallation succeeded!")
 	return 0
 }
 

@@ -4,28 +4,14 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
-	"time"
 )
 
 type File struct {
-	Router           string
-	Model            string
-	InstallDir       string
-	LogDir           string
-	WebListen        string
-	NamespaceName    string
-	NamespaceParent  string
-	NamespaceLink    string
-	NamespaceAddress string
-	NamespaceGateway string
-	NamespaceDNS     string
-	NamespaceMode    string
-	FollowLogs       *bool
-	FollowLogFile    string
-	FollowLogLines   *int
-	FollowLogTimeout *time.Duration
+	Router     string
+	Model      string
+	InstallDir string
+	LogDir     string
 }
 
 func Load(path string) (File, error) {
@@ -59,42 +45,6 @@ func Load(path string) (File, error) {
 			cfg.InstallDir = value
 		case "log_dir":
 			cfg.LogDir = value
-		case "web_listen":
-			cfg.WebListen = value
-		case "namespace_name":
-			cfg.NamespaceName = value
-		case "namespace_parent":
-			cfg.NamespaceParent = value
-		case "namespace_link":
-			cfg.NamespaceLink = value
-		case "namespace_address":
-			cfg.NamespaceAddress = value
-		case "namespace_gateway":
-			cfg.NamespaceGateway = value
-		case "namespace_dns":
-			cfg.NamespaceDNS = value
-		case "namespace_mode":
-			cfg.NamespaceMode = value
-		case "follow_logs":
-			parsed, err := strconv.ParseBool(value)
-			if err != nil {
-				return File{}, fmt.Errorf("%s:%d: invalid bool for follow_logs", path, lineNo)
-			}
-			cfg.FollowLogs = &parsed
-		case "follow_log_file":
-			cfg.FollowLogFile = value
-		case "follow_log_lines":
-			parsed, err := strconv.Atoi(value)
-			if err != nil || parsed < 0 {
-				return File{}, fmt.Errorf("%s:%d: invalid non-negative integer for follow_log_lines", path, lineNo)
-			}
-			cfg.FollowLogLines = &parsed
-		case "follow_log_timeout":
-			parsed, err := parseDuration(value)
-			if err != nil {
-				return File{}, fmt.Errorf("%s:%d: invalid duration for follow_log_timeout", path, lineNo)
-			}
-			cfg.FollowLogTimeout = &parsed
 		default:
 			return File{}, fmt.Errorf("%s:%d: unknown config key %q", path, lineNo, key)
 		}
@@ -117,42 +67,6 @@ func (c File) Apply(opts *Options) {
 	}
 	if c.LogDir != "" {
 		opts.LogDir = c.LogDir
-	}
-	if c.WebListen != "" {
-		opts.WebListen = c.WebListen
-	}
-	if c.NamespaceName != "" {
-		opts.NamespaceName = c.NamespaceName
-	}
-	if c.NamespaceParent != "" {
-		opts.NamespaceParent = c.NamespaceParent
-	}
-	if c.NamespaceLink != "" {
-		opts.NamespaceLink = c.NamespaceLink
-	}
-	if c.NamespaceAddress != "" {
-		opts.NamespaceAddress = c.NamespaceAddress
-	}
-	if c.NamespaceGateway != "" {
-		opts.NamespaceGateway = c.NamespaceGateway
-	}
-	if c.NamespaceDNS != "" {
-		opts.NamespaceDNS = c.NamespaceDNS
-	}
-	if c.NamespaceMode != "" {
-		opts.NamespaceMode = c.NamespaceMode
-	}
-	if c.FollowLogs != nil {
-		opts.FollowLogs = *c.FollowLogs
-	}
-	if c.FollowLogFile != "" {
-		opts.FollowLogFile = c.FollowLogFile
-	}
-	if c.FollowLogLines != nil {
-		opts.FollowLogLines = *c.FollowLogLines
-	}
-	if c.FollowLogTimeout != nil {
-		opts.FollowLogTimeout = *c.FollowLogTimeout
 	}
 }
 
@@ -192,11 +106,4 @@ func unquote(value string) string {
 		return value[1 : len(value)-1]
 	}
 	return value
-}
-
-func parseDuration(value string) (time.Duration, error) {
-	if value == "" || value == "0" {
-		return 0, nil
-	}
-	return time.ParseDuration(value)
 }

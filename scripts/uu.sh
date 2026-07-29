@@ -21,11 +21,30 @@ INSTALL_DIR=""
 MONITOR_FILE=""
 MONITOR_CONFIG=""
 
-ASUSWRT_MERLIN="asuswrt-merlin"
-XIAOMI="xiaomi"
-HIWIFI="hiwifi"
-OPENWRT="openwrt"
 STEAM_DECK_PLUGIN="steam-deck-plugin"
+
+# 显示整体安装进度条。参数：<百分比 0-100> <描述>
+# 进度输出到 stdout（终端可见）；stderr 已重定向到日志。
+progress() {
+    pct="$1"
+    msg="$2"
+    width=30
+    filled=$((pct * width / 100))
+    bar=""
+    i=0
+    while [ "$i" -lt "$width" ]; do
+        if [ "$i" -lt "$filled" ]; then
+            bar="${bar}#"
+        else
+            bar="${bar}-"
+        fi
+        i=$((i + 1))
+    done
+    printf "\r[%s] %3d%% %s\033[K" "$bar" "$pct" "$msg"
+    if [ "$pct" -ge 100 ]; then
+        printf "\n"
+    fi
+}
 
 get_steam_deck_install_dir() {
     local sd_install_dir="/home/deck"
@@ -60,40 +79,6 @@ init_param() {
     local monitor_filename="uuplugin_monitor.sh"
 
     case "${router}" in
-    ${ASUSWRT_MERLIN})
-        INSTALL_DIR="/jffs/uu"
-        MONITOR_FILE="${INSTALL_DIR}/${monitor_filename}"
-        MONITOR_CONFIG="${INSTALL_DIR}/uuplugin_monitor.config"
-        UNINSTALL_DOWNLOAD_URL="${URL_PREFIX}${UNINSTALL_DOWNLOAD_URL}${ASUSWRT_MERLIN}"
-        MONITOR_DOWNLOAD_URL="${URL_PREFIX}${MONITOR_DOWNLOAD_URL}${ASUSWRT_MERLIN}"
-        return 0
-        ;;
-    ${XIAOMI})
-        URL_PREFIX="http://"
-        INSTALL_DIR="/data/uu"
-        MONITOR_FILE="${INSTALL_DIR}/${monitor_filename}"
-        MONITOR_CONFIG="${INSTALL_DIR}/uuplugin_monitor.config"
-        UNINSTALL_DOWNLOAD_URL="${URL_PREFIX}${UNINSTALL_DOWNLOAD_URL}${XIAOMI}"
-        MONITOR_DOWNLOAD_URL="${URL_PREFIX}${MONITOR_DOWNLOAD_URL}${XIAOMI}"
-        return 0
-        ;;
-    ${HIWIFI})
-        INSTALL_DIR="/plugins/uu"
-        MONITOR_FILE="${INSTALL_DIR}/${monitor_filename}"
-        MONITOR_CONFIG="${INSTALL_DIR}/uuplugin_monitor.config"
-        UNINSTALL_DOWNLOAD_URL="${URL_PREFIX}${UNINSTALL_DOWNLOAD_URL}${HIWIFI}"
-        MONITOR_DOWNLOAD_URL="${URL_PREFIX}${MONITOR_DOWNLOAD_URL}${HIWIFI}"
-        return 0
-        ;;
-    ${OPENWRT})
-        URL_PREFIX="http://"
-        INSTALL_DIR="/usr/sbin/uu/"
-        MONITOR_FILE="${INSTALL_DIR}/${monitor_filename}"
-        MONITOR_CONFIG="${INSTALL_DIR}/uuplugin_monitor.config"
-        UNINSTALL_DOWNLOAD_URL="${URL_PREFIX}${UNINSTALL_DOWNLOAD_URL}${OPENWRT}"
-        MONITOR_DOWNLOAD_URL="${URL_PREFIX}${MONITOR_DOWNLOAD_URL}${OPENWRT}"
-        return 0
-        ;;
     ${STEAM_DECK_PLUGIN})
         URL_PREFIX="https://"
         INSTALL_DIR=$(get_steam_deck_install_dir)
@@ -107,15 +92,6 @@ init_param() {
         return 1
         ;;
     esac
-}
-
-# Return: 0 means success.
-config_asuswrt() {
-    # Config jffs file system
-    nvram set jffs2_enable=1
-    nvram set jffs2_scripts=1
-    nvram commit &
-    return 0
 }
 
 # Return: 0 means success.
@@ -142,10 +118,8 @@ clean_up() {
 download() {
     local url="$1"
     local file="$2"
-    local plugin_info=$(curl -L -s -k -H "Accept:text/plain" "${url}" || \
-        wget -q --no-check-certificate -O - "${url}&output=text" || \
-        wget -q -O - "${url}&output=text" || \
-        curl -s -k -H "Accept:text/plain" "${url}"
+    local plugin_info=$(curl -s -H "Accept:text/plain" "${url}" || \
+        wget -q -O - "${url}&output=text"
     )
 
     [ "$?" != "0" ] && return 1
@@ -157,10 +131,8 @@ download() {
     [ -z "${plugin_url}" ] && return 1
     [ -z "${plugin_md5}" ] && return 1
 
-    curl -L -s -k "$plugin_url" -o "${file}" >/dev/null 2>&1 || \
-        wget -q --no-check-certificate "$plugin_url" -O "${file}" >/dev/null 2>&1 || \
-        wget -q "$plugin_url" -O "${file}" >/dev/null 2>&1 || \
-        curl -s -k "$plugin_url" -o "${file}" >/dev/null 2>&1
+    curl -s "$plugin_url" -o "${file}" >/dev/null 2>&1 || \
+        wget -q "$plugin_url" -O "${file}" >/dev/null 2>&1
 
     if [ "$?" != "0" ];then
         [ -f "${file}" ] && rm "${file}"
@@ -226,90 +198,6 @@ check_running() {
     return 1
 }
 
-# Return: 0 means it is merlin.
-check_merlin() {
-    # Check to see if it is merlin
-    local br0=$(ip -4 a s br0 | grep inet | grep -v 'grep' | \
-        sed 's/^[ \t]*//g;s/[ \t]*$//g' | sed 's/[ ][ ]*/#/g' | cut -d'#' -f2 | cut -d/ -f1)
-    [ -z "${br0}" ] && return 1
-
-    local code=$(curl -s -o /dev/null -w "%{http_code}" "http://${br0}/images/merlin-logo.png")
-    [ "$code" = "200" ] && return 0
-
-    code=$(wget -Sq -O - "http://${br0}/images/merlin-logo.png" 2>&1 | grep 'HTTP' | \
-        sed 's/^[ \t]*//g;s/[ \t]*$//g' | sed 's/[ ][ ]*/#/g' | cut -d'#' -f2)
-    [ "$code" = "200" ] && return 0
-    return 1
-}
-
-config_asuswrt_bootup() {
-    check_merlin
-    if [ "$?" = "0" ];then
-        config_services_start
-        return $?
-    else
-        config_exec_start
-        return $?
-    fi
-}
-
-# Return: 0 means success.
-config_exec_start() {
-    local bootup_script="${INSTALL_DIR}/uuplugin_bootup.sh"
-    {
-        echo "#!/bin/sh"
-        echo "nohup /bin/sh ${MONITOR_FILE} &"
-    } > ${bootup_script}
-
-    chmod u+x ${bootup_script}
-    nvram set jffs2_exec="${bootup_script}"
-    nvram commit &
-    return 0
-}
-
-# Return: 0 means success.
-# Config ${MONITOR_FILE} starts on boot.
-config_services_start() {
-    local SERVICES_START_FILE="/jffs/scripts/services-start"
-    if [ ! -e "${SERVICES_START_FILE}" ];then
-        mkdir -p /jffs/scripts
-        [ "$?" != "0" ] && return 1
-
-        touch "${SERVICES_START_FILE}"
-        [ "$?" != "0" ] && return 1
-
-        { echo "#!/bin/sh"; echo ""; echo ""; } >> "${SERVICES_START_FILE}"
-        [ "$?" != "0" ] && return 1
-    fi
-
-    chmod u+x "${SERVICES_START_FILE}"
-    grep "${MONITOR_FILE}" "${SERVICES_START_FILE}" 1>/dev/null 2>&1
-    if [ "$?" != "0" ];then
-        echo "/bin/sh ${MONITOR_FILE} &" >> "${SERVICES_START_FILE}"
-        [ "$?" != "0" ] && return 1
-    fi
-
-    return 0
-}
-
-# Return: 0 means success.
-config_xiaomi_bootup() {
-    config_bootup_implemention
-    return $?
-}
-
-# Return: 0 means success.
-config_hiwifi_bootup() {
-    config_bootup_implemention
-    return $?
-}
-
-# Return: 0 means success.
-config_openwrt_bootup() {
-    config_bootup_implemention
-    return $?
-}
-
 # Return: 0 means success.
 config_steam_deck_bootup() {
     config_steam_deck_systemd
@@ -337,53 +225,10 @@ config_steam_deck_systemd() {
     systemctl start uuplugin
 }
 
-config_bootup_implemention() {
-    local init_script="${INSTALL_DIR}/S99uuplugin"
-    local link_script="/etc/rc.d/S99uuplugin"
-
-    {
-        echo "#!/bin/sh /etc/rc.common";
-        echo "";
-        echo "";
-        echo "START=99";
-        echo "start() {"
-        echo "    /bin/sh ${MONITOR_FILE} &";
-        echo "}"
-    } > "${init_script}"
-
-    [ "$?" != "0" ] && return 1
-    [ ! -f "${init_script}" ] && return 1
-    chmod u+x ${init_script}
-
-    ln -sf ${init_script} ${link_script}
-    if [ "$?" != "0" ];then
-        [ -f "${init_script}" ] && rm ${init_script}
-        return 1
-    fi
-    return 0
-}
-
 # Return: 0 means success.
 config_bootup() {
     local router="${ROUTER}"
     case "${router}" in
-    ${ASUSWRT_MERLIN})
-        config_asuswrt_bootup
-        return $?
-        ;;
-    ${XIAOMI})
-        config_xiaomi_bootup
-        return $?
-        ;;
-    ${HIWIFI})
-        config_hiwifi_bootup
-        return $?
-        ;;
-    ${OPENWRT})
-        config_openwrt_bootup
-        return $?
-        ;;
-
     ${STEAM_DECK_PLUGIN})
         config_steam_deck_bootup
         return $?
@@ -398,13 +243,6 @@ config_bootup() {
 config_router() {
     local router="${ROUTER}"
     case "${router}" in
-    ${ASUSWRT_MERLIN})
-        config_asuswrt
-        return $?
-        ;;
-    ${XIAOMI} | ${HIWIFI} | ${OPENWRT})
-        return 0
-        ;;
     ${STEAM_DECK_PLUGIN})
         return 0
         ;;
@@ -417,12 +255,6 @@ config_router() {
 print_sn() {
     local interface=""
     case "${ROUTER}" in
-        ${ASUSWRT_MERLIN})
-            interface="br0"
-            ;;
-        ${XIAOMI} | ${HIWIFI} | ${OPENWRT})
-            interface="br-lan"
-            ;;
         *)
             return 1
             ;;
@@ -446,21 +278,29 @@ create_uninstall() {
 }
 
 install() {
+    progress 0 "开始安装..."
+
+    progress 10 "初始化参数..."
     init_param
     [ "$?" != "0" ] && return 9
 
+    progress 20 "检查系统参数..."
     config_router
     [ "$?" != "0" ] && return 1
 
+    progress 30 "检查安装目录..."
     check_dir
     [ "$?" != "0" ] && return 2 
 
+    progress 45 "下载卸载脚本..."
     download "${UNINSTALL_DOWNLOAD_URL}" "${UNINSTALL_FILE}"
     [ "$?" != "0" ] && return 3
 
+    progress 55 "清理旧版本..."
     clean_up
     [ "$?" != "0" ] && return 4
 
+    progress 70 "下载守护程序..."
     download "${MONITOR_DOWNLOAD_URL}" "${MONITOR_FILE}"
     if [ "$?" != "0" ];then
         [ -f "${MONITOR_FILE}" ] && rm "${MONITOR_FILE}"
@@ -473,20 +313,26 @@ install() {
             echo "router=${ROUTER}";
             echo "model=x86_64"
         } > ${MONITOR_CONFIG}
+        progress 85 "配置开机启动..."
         config_bootup
+
+        progress 95 "启动插件..."
         check_running
         create_uninstall
         if [ "$?" != "0" ];then
-            echo "Installation failed!"
+            #echo "Installation failed!"
             return 6
         fi
-        echo "Installation succeeded!"
+
+        progress 100 "安装完成..."
         return 0
     fi
 
+    progress 85 "启动守护程序..."
     start_monitor
     [ "$?" != "0" ] && return 6
 
+    progress 95 "等待插件运行..."
     check_running
     [ "$?" != "0" ] && return 7
 
@@ -495,16 +341,54 @@ install() {
 
     print_sn
     [ "$?" != "0" ] && return 10
+
+    progress 100 "安装完成..."
     return 0
 }
 
 # Start to install.
+QRFILE="/tmp/uu/.steam_deck_sn_qrcode"
+[ -f "${QRFILE}" ] && rm "${QRFILE}"
+
 install
 status_code=$?
 
+if [ "${status_code}" -eq "0" ];then
+    #watch -t -n1 cat /tmp/uu/.steam_deck_sn_qrcode < /dev/tty
+    i=0
+    while [ "$i" -lt 30 ]; do
+        echo "插件安装成功，正在加载..."
+        if [ -f "${QRFILE}" ]; then
+            break
+        fi
+        i=$((i + 1))
+        sleep 1
+    done
+
+    if [ -f ${QRFILE} ] ; then
+        printf '\033[2J'
+        while [ -f "${QRFILE}" ]; do
+            {
+                printf '\033[H'
+                echo "插件安装成功。请使用UU主机加速器App扫码并完成绑定。"
+                echo "绑定成功后，可关闭 Kconsole (终端) 。"
+                cat ${QRFILE}
+                printf '\033[J'
+            }
+            sleep 1
+        done
+        [ -f "${UNINSTALL_FILE}" ] && rm "${UNINSTALL_FILE}"
+        exit 0
+    else
+        echo "插件安装成功。请使用UU主机加速器App进行局域网绑定。"
+        [ -f "${UNINSTALL_FILE}" ] && rm "${UNINSTALL_FILE}"
+        exit 0
+    fi
+fi
+
 if [ ${status_code} -gt 4 ];then
     if [ -f "${UNINSTALL_FILE}" ];then
-        echo "Cleaning up."
+        echo "安装失败，正在清理已下载文件..."
         clean_up
     fi
 fi

@@ -519,39 +519,17 @@ sudo strace -ff -o uuplugin.strace -p "$(pidof uuplugin | awk '{print $1}')" -e 
 - `sendto()` / `recvfrom()` 是否访问 DNS。
 - 是否读取 `/tmp/uu/uu.conf`。
 
-## 十、推荐落地方案
+## 十、落地结论修正
 
-如果目标是让 UU 和 daed 长期共存，最稳的做法不是继续在宿主机上反复调 daed 规则，而是把官方 `uuplugin` 隔离到独立网络命名空间里：
+后续验证表明，不能把“`uuplugin` 进程能够在 namespace 中启动”等同于“游戏加速生效”。插件依赖主机网络栈中的 `dae0` 和相应 eBPF 拦截路径；把插件放入独立 namespace 后，它无法直接使用主机侧的拦截点，namespace 流量也不会自然经过该路径。
 
-```text
-宿主机: daed 继续负责普通上网
-uu-ns: 只放官方 uuplugin、tun163、UU 的 DNS 和路由
-手机: 连接 uu-ns 里的独立局域网 IP
-```
-
-这样做的好处是：
-
-1. `uuplugin` 的路由表、DNS、`tun163` 都不再进入宿主网络栈。
-2. daed 不会再接管 `uuplugin` 的出站连接。
-3. 普通网页和游戏加速分离，排查范围明显缩小。
-4. 不需要逆向 UU 协议，也不需要改写官方插件。
-
-如果仍要在宿主 daed 里加保险，可以只补一条最小规则：
+因此当前项目不再提供 `ns-*` 命令和对应 Web 控制页。已验证的落地方式是让官方 `uuplugin` 在主机网络 namespace 中运行，并在 daed 中为它配置最小直连规则：
 
 ```dae
 pname(uuplugin) -> must_direct
 ```
 
-但这只是兜底，不是主方案。主方案仍然是 namespace 隔离。
-
-实现时可以再加一个本地 HTML 控制页，绑定到 `127.0.0.1`，提供：
-
-- `ns-start`
-- `ns-stop`
-- `ns-status`
-- `restart`
-
-这样日常操作只需要打开本机控制页，不用每次手敲复杂命令。
+独立 namespace 只能作为尚未完成的研究方向。若将来重新引入，必须先完成并实机证明 veth 转发、NAT 或 policy routing、DNS、回程路径以及 eBPF 实际命中；仅创建 macvlan/ipvlan 和独立 IP 不足以证明功能成立。相关设想记录在 `docs/namespace-routing-plan.md`，不属于当前支持能力。
 - 是否操作路由、TUN、iptables 或 nftables。
 
 ### 9. 查看打开的文件和 socket

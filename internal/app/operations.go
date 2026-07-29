@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/npc1607/uu/internal/logtail"
 	"github.com/npc1607/uu/internal/plugin"
 	"github.com/npc1607/uu/internal/router"
 )
@@ -21,7 +20,7 @@ func (i *App) Start() int {
 
 	if pid, running := plugin.Status(); running {
 		fmt.Fprintf(i.stdout, "%s already running (pid %d)\n", plugin.Executable, pid)
-		return i.finishSuccessfulInstall()
+		return 0
 	}
 
 	var err error
@@ -45,7 +44,7 @@ func (i *App) Start() int {
 	}
 	pid, _ := plugin.Status()
 	fmt.Fprintf(i.stdout, "%s started (pid %d)\n", plugin.Executable, pid)
-	return i.finishSuccessfulInstall()
+	return 0
 }
 
 func (i *App) Stop() int {
@@ -109,32 +108,14 @@ func (i *App) Status() int {
 	pid, running := plugin.Status()
 	if running {
 		fmt.Fprintf(i.stdout, "process=%s state=running pid=%d\n", plugin.Executable, pid)
-		fmt.Fprintf(i.stdout, "log_file=%s\n", i.opts.FollowLogFile)
 		return 0
 	}
 	if pid > 0 {
 		fmt.Fprintf(i.stdout, "process=%s state=not-running stale_pid=%d\n", plugin.Executable, pid)
-		fmt.Fprintf(i.stdout, "log_file=%s\n", i.opts.FollowLogFile)
 		return 1
 	}
 	fmt.Fprintf(i.stdout, "process=%s state=not-running\n", plugin.Executable)
-	fmt.Fprintf(i.stdout, "log_file=%s\n", i.opts.FollowLogFile)
 	return 1
-}
-
-func (i *App) Logs() int {
-	i.openLog(false)
-	defer i.closeLog()
-	if err := logtail.Follow(logtail.Options{
-		File:    i.opts.FollowLogFile,
-		Lines:   i.opts.FollowLogLines,
-		Timeout: i.opts.FollowLogTimeout,
-		Writer:  i.stdout,
-	}); err != nil {
-		fmt.Fprintf(i.stderr, "logs failed: %v\n", err)
-		return 1
-	}
-	return 0
 }
 
 func systemdState(service string) (string, error) {

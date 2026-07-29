@@ -2,6 +2,7 @@
 /.cache/
 /.git-real/
 /dist/
+/runtime/
 /coverage.out
 /uninstall.sh
 /uuplugin_monitor.config

@@ -1,22 +1,5 @@
 router: steam-deck-plugin
 model: x86_64
-web_listen: 127.0.0.1:8088
 # Defaults to the directory containing the uu binary.
 # install_dir: /opt/uu/
 # log_dir: /tmp
-
-# Isolated namespace mode for official uuplugin.
-# namespace_name: uu-ns
-# namespace_parent: enp34s0
-# namespace_link: uu-macvlan0
-# namespace_address: 192.168.1.250/24
-# namespace_gateway: 192.168.1.1
-# namespace_dns: 223.5.5.5,119.29.29.29
-# namespace_mode: macvlan
-
-# Print and follow the monitor log after successful install.
-follow_logs: false
-follow_log_file: /tmp/monitor.log
-follow_log_lines: 100
-# Use 0 for no timeout, or values like 30s, 5m.
-follow_log_timeout: 0

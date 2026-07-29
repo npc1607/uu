@@ -12,6 +12,11 @@ import (
 	"github.com/npc1607/uu/internal/router"
 )
 
+const (
+	legacyNamespaceServiceName = "uuplugin-ns"
+	legacyNamespaceServiceFile = "/etc/systemd/system/uuplugin-ns.service"
+)
+
 func (i *App) createUninstall() error {
 	if i.params.router == router.SteamDeck {
 		return i.createSteamDeckUninstall()
@@ -87,8 +92,9 @@ func (i *App) cleanUpSteamDeck() error {
 	if _, err := exec.LookPath("systemctl"); err == nil {
 		_ = i.runSilent("systemctl", "disable", "uuplugin")
 		_ = i.runSilent("systemctl", "stop", "uuplugin")
-		_ = i.runSilent("systemctl", "disable", namespaceServiceName)
-		_ = i.runSilent("systemctl", "stop", namespaceServiceName)
+		// Remove services created by versions that still exposed namespace mode.
+		_ = i.runSilent("systemctl", "disable", legacyNamespaceServiceName)
+		_ = i.runSilent("systemctl", "stop", legacyNamespaceServiceName)
 	}
 
 	for _, path := range []string{i.params.monitorFile, i.params.monitorConfig, uninstallFile} {
@@ -106,8 +112,8 @@ func (i *App) cleanUpSteamDeck() error {
 	if err := os.Remove(serviceFile); err != nil && !os.IsNotExist(err) {
 		i.logf("remove %s failed: %v", serviceFile, err)
 	}
-	if err := os.Remove(namespaceServiceFile); err != nil && !os.IsNotExist(err) {
-		i.logf("remove %s failed: %v", namespaceServiceFile, err)
+	if err := os.Remove(legacyNamespaceServiceFile); err != nil && !os.IsNotExist(err) {
+		i.logf("remove %s failed: %v", legacyNamespaceServiceFile, err)
 	}
 	return nil
 }
